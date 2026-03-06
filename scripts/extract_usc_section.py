@@ -8,9 +8,9 @@ Usage:
 Returns plain text suitable for RAC encoding.
 """
 
-import sys
-import re
 import html
+import re
+import sys
 from pathlib import Path
 
 # Default path to USC XML files
@@ -92,9 +92,6 @@ def clean_tags(text: str) -> str:
 
 def process_element(xml: str, lines: list, level: int):
     """Process XML element and its children."""
-    # Find subsections at current level
-    subsection_pattern = r'<subsection[^>]*identifier="([^"]+)"[^>]*>(.*?)</subsection>'
-
     # Use iterative approach to find top-level subsections
     pos = 0
     while True:
@@ -103,7 +100,6 @@ def process_element(xml: str, lines: list, level: int):
             break
 
         start = pos + match.start()
-        identifier = match.group(1)
 
         # Find the matching end tag (handle nesting)
         depth = 1

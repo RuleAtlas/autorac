@@ -214,8 +214,8 @@ class TestSyncRunToSupabase:
 class TestSyncAllRuns:
     def test_sync_all_runs(self, tmp_path):
         from autorac.harness.encoding_db import (
-            EncodingRun,
             EncodingDB,
+            EncodingRun,
             Iteration,
         )
 
@@ -239,8 +239,8 @@ class TestSyncAllRuns:
 
     def test_sync_all_runs_with_failure(self, tmp_path):
         from autorac.harness.encoding_db import (
-            EncodingRun,
             EncodingDB,
+            EncodingRun,
             Iteration,
         )
 
