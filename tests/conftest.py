@@ -14,8 +14,8 @@ src_path = str(Path(__file__).parent.parent / "src")
 sys.path.insert(0, src_path)
 
 from autorac import (
-    EncodingRun,
     EncodingDB,
+    EncodingRun,
     PipelineResult,
     ReviewResult,
     ReviewResults,

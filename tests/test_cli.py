@@ -37,8 +37,8 @@ from autorac.cli import (
     main,
 )
 from autorac.harness.encoding_db import (
-    EncodingRun,
     EncodingDB,
+    EncodingRun,
     Iteration,
     IterationError,
     ReviewResult,
