@@ -176,6 +176,201 @@ class TestCriticalRulesInPrompts:
         assert "indexed_by:" in prompt
 
 
+class TestExtractSubsectionText:
+    """Tests for _extract_subsection_text."""
+
+    SAMPLE_STATUTE = (
+        "(a) In general. A credit is allowed. "
+        "(b) Applicable percentage. The percentage is 35 percent. "
+        "(c) Dollar limit. The amount shall not exceed $3,000. "
+        "(d) Earned income limitation. Reduced by earned income."
+    )
+
+    def test_extracts_first_subsection(self, api_orchestrator):
+        result = api_orchestrator._extract_subsection_text(
+            self.SAMPLE_STATUTE, "a"
+        )
+        assert result is not None
+        assert "(a) In general" in result
+        assert "credit is allowed" in result
+        # Should NOT contain (b) content
+        assert "Applicable percentage" not in result
+
+    def test_extracts_middle_subsection(self, api_orchestrator):
+        result = api_orchestrator._extract_subsection_text(
+            self.SAMPLE_STATUTE, "b"
+        )
+        assert result is not None
+        assert "(b) Applicable percentage" in result
+        assert "35 percent" in result
+        assert "Dollar limit" not in result
+
+    def test_extracts_last_subsection(self, api_orchestrator):
+        result = api_orchestrator._extract_subsection_text(
+            self.SAMPLE_STATUTE, "d"
+        )
+        assert result is not None
+        assert "(d) Earned income limitation" in result
+
+    def test_handles_parenthesized_id(self, api_orchestrator):
+        result = api_orchestrator._extract_subsection_text(
+            self.SAMPLE_STATUTE, "(b)"
+        )
+        assert result is not None
+        assert "Applicable percentage" in result
+
+    def test_returns_none_for_missing_subsection(self, api_orchestrator):
+        result = api_orchestrator._extract_subsection_text(
+            self.SAMPLE_STATUTE, "z"
+        )
+        assert result is None
+
+    def test_returns_none_for_empty_text(self, api_orchestrator):
+        assert api_orchestrator._extract_subsection_text("", "a") is None
+        assert api_orchestrator._extract_subsection_text(None, "a") is None
+
+    def test_returns_none_for_empty_id(self, api_orchestrator):
+        assert api_orchestrator._extract_subsection_text("text", "") is None
+
+    def test_numeric_subsection_ids(self, api_orchestrator):
+        text = "(1) First item. (2) Second item. (3) Third item."
+        result = api_orchestrator._extract_subsection_text(text, "2")
+        assert result is not None
+        assert "(2) Second item" in result
+        assert "First item" not in result
+        assert "Third item" not in result
+
+    def test_truncates_long_text(self, api_orchestrator):
+        long_text = "(a) " + "x" * 20000 + " (b) short."
+        result = api_orchestrator._extract_subsection_text(long_text, "a")
+        assert result is not None
+        assert len(result) <= 15100  # 15000 + "... [truncated]"
+        assert result.endswith("... [truncated]")
+
+
+class TestSubsectionPromptUsesSpecificText:
+    """Tests that _build_subsection_prompt injects subsection-specific text."""
+
+    STATUTE = (
+        "(a) Credit allowed. There is allowed a credit. "
+        "(b) Rate. The rate is 35 percent. "
+        "(c) Limit. Not more than $3,000."
+    )
+
+    def test_prompt_contains_subsection_text_not_full(self, api_orchestrator):
+        task = SubsectionTask(
+            subsection_id="b",
+            title="Rate",
+            file_name="b.rac",
+            dependencies=[],
+        )
+        prompt = api_orchestrator._build_subsection_prompt(
+            task=task,
+            citation="26 USC 21",
+            output_path=Path("/tmp/test"),
+            statute_text=self.STATUTE,
+        )
+        assert "Statute text for subsection (b)" in prompt
+        assert "35 percent" in prompt
+        # Should NOT have the full-text fallback label
+        assert "Full statute text (excerpt)" not in prompt
+
+    def test_prompt_falls_back_when_subsection_not_found(self, api_orchestrator):
+        task = SubsectionTask(
+            subsection_id="z",
+            title="Nonexistent",
+            file_name="z.rac",
+            dependencies=[],
+        )
+        prompt = api_orchestrator._build_subsection_prompt(
+            task=task,
+            citation="26 USC 21",
+            output_path=Path("/tmp/test"),
+            statute_text=self.STATUTE,
+        )
+        assert "Full statute text (excerpt)" in prompt
+
+
+class TestBuildAggregatorPrompt:
+    """Tests for _build_aggregator_prompt."""
+
+    def test_contains_root_file_name(self, api_orchestrator):
+        tasks = [
+            SubsectionTask(subsection_id="a", title="Credit", file_name="a.rac"),
+            SubsectionTask(subsection_id="b", title="Rate", file_name="b.rac"),
+        ]
+        prompt = api_orchestrator._build_aggregator_prompt(
+            citation="26 USC 21",
+            output_path=Path("/tmp/test"),
+            tasks=tasks,
+        )
+        assert "21.rac" in prompt
+        assert "ROOT aggregator" in prompt
+
+    def test_lists_all_children(self, api_orchestrator):
+        tasks = [
+            SubsectionTask(subsection_id="a", title="Credit", file_name="a.rac"),
+            SubsectionTask(subsection_id="b", title="Rate", file_name="b.rac"),
+            SubsectionTask(subsection_id="c", title="Limit", file_name="c.rac"),
+        ]
+        prompt = api_orchestrator._build_aggregator_prompt(
+            citation="26 USC 32",
+            output_path=Path("/tmp/test"),
+            tasks=tasks,
+        )
+        assert "a.rac" in prompt
+        assert "b.rac" in prompt
+        assert "c.rac" in prompt
+        assert "32.rac" in prompt
+
+    def test_includes_dsl_cheatsheet(self, api_orchestrator):
+        tasks = [
+            SubsectionTask(subsection_id="a", title="Credit", file_name="a.rac"),
+        ]
+        prompt = api_orchestrator._build_aggregator_prompt(
+            citation="26 USC 21",
+            output_path=Path("/tmp/test"),
+            tasks=tasks,
+        )
+        assert "RAC DSL quick reference" in prompt
+
+    def test_no_duplicate_logic_instruction(self, api_orchestrator):
+        tasks = [
+            SubsectionTask(subsection_id="a", title="Credit", file_name="a.rac"),
+        ]
+        prompt = api_orchestrator._build_aggregator_prompt(
+            citation="26 USC 21",
+            output_path=Path("/tmp/test"),
+            tasks=tasks,
+        )
+        assert "NOT duplicate" in prompt or "NOT re-encode" in prompt
+
+
+class TestAggregatorWaveInEncoding:
+    """Tests that _run_encoding_parallel adds an aggregator wave."""
+
+    @pytest.fixture
+    def analysis_json(self):
+        return """Some analysis text.
+<!-- STRUCTURED_OUTPUT
+{"subsections": [
+  {"id": "a", "title": "Credit", "disposition": "ENCODE", "file": "a.rac"},
+  {"id": "b", "title": "Rate", "disposition": "ENCODE", "file": "b.rac"},
+  {"id": "c", "title": "Limit", "disposition": "ENCODE", "file": "c.rac"}
+],
+ "dependencies": {"b": ["a"]},
+ "encoding_order": ["a", "c", "b"]}
+-->"""
+
+    def test_parse_and_waves(self, api_orchestrator, analysis_json):
+        """Verify parse + wave computation works for aggregator test setup."""
+        tasks = api_orchestrator._parse_analyzer_output(analysis_json)
+        assert len(tasks) == 3
+        waves = api_orchestrator._compute_waves(tasks)
+        # a and c have no deps -> wave 0, b depends on a -> wave 1
+        assert len(waves) == 2
+
+
 class TestLogAgentRunNoTruncation:
     """Tests that _log_agent_run does not truncate prompt or result content."""
 

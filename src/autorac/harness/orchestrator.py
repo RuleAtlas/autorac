@@ -760,6 +760,21 @@ Write .rac files to the output path. Run `autorac test` after each file.
                 else:
                     all_runs.append(r)
 
+        # Final aggregation wave: produce root .rac file
+        if len(tasks) > 1:
+            print(
+                f"\n[{datetime.utcnow().strftime('%H:%M:%S')}] "
+                f"ENCODING WAVE {len(waves)}: ROOT AGGREGATOR",
+                flush=True,
+            )
+            aggregator_prompt = self._build_aggregator_prompt(
+                citation, output_path, tasks
+            )
+            aggregator_run = await self._run_agent(
+                "encoder", aggregator_prompt, Phase.ENCODING
+            )
+            all_runs.append(aggregator_run)
+
         return all_runs
 
     def _build_subsection_prompt(
@@ -782,8 +797,21 @@ Write .rac files to the output path. Run `autorac test` after each file.
             "1. **FILEPATH = CITATION** - File names MUST be subsection names",
             "2. **One subsection per file**",
             "3. **Only statute values** - No indexed/derived/computed values",
+            "4. **COMPILE PRE-FLIGHT** - `autorac compile` may be broken (missing "
+            "`rac.dsl_parser`). If compile fails with a module import error, ignore "
+            "it — this is an infrastructure issue, not your encoding. Only use "
+            "`autorac test` for validation.",
+            "5. **WRITE TESTS** - Write 3-5 test cases in a companion `.rac.test` "
+            "file next to your `.rac` file. Tests should cover the main computation, "
+            "edge cases (zero values, thresholds), and boundary conditions.",
+            "6. **PARENT IMPORTS FROM CHILDREN** - Parent files MUST import from "
+            "their children using `from ./{child}` — NEVER re-define parameters or "
+            "formulas that exist in child files. Parents are aggregators/routers only.",
+            "7. **INDEXED_BY FOR INFLATION** - For parameters subject to "
+            "inflation/COLA adjustments (e.g., dollar thresholds in 26 USC 1(f)), "
+            "include `indexed_by: <index_variable>` in the parameter definition.",
             "",
-            "Write the .rac file to the output path. Run tests after writing.",
+            "Write the .rac file to the output path. Run `autorac test` after writing.",
         ]
 
         if task.dependencies:
