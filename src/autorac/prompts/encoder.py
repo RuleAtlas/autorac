@@ -176,6 +176,7 @@ All files go in `~/RulesFoundation/rac-us/statute/{title}/{section}/`
 
 **Parameters (no keyword prefix):** `description`, `unit`, `indexed_by`, `from YYYY-MM-DD:` temporal entries
 **Variables (no keyword prefix):** `imports`, `entity`, `period`, `dtype`, `unit`, `label`, `description`, `default`, `from YYYY-MM-DD:` temporal formula blocks
+**Import paths must be absolute from the title root** (e.g., `42/607/b/1/B#var`). Never use relative paths like `./B#var`.
 **Inputs:** `entity`, `period`, `dtype`, `unit`, `label`, `description`, `default`
 **Tests:** defined in separate `.rac.test` files (not inline)
 
@@ -247,6 +248,7 @@ Amendments override the baseline parameter values for the specified date range. 
 - Hardcode dollar amounts or rates (use parameters)
 - Mix content from different subsections in one file
 - Leave imports unresolved
+- Use relative imports (e.g., `./B#var`). Always use absolute paths from the title root (e.g., `42/607/b/1/B#var`)
 - Skip running the test runner after each file
 - Mark encoding complete until test runner passes
 """
