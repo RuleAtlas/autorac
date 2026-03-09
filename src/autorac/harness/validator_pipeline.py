@@ -787,16 +787,16 @@ Output ONLY valid JSON:
         start = time.time()
         issues = []
 
-        # Read and parse RAC file
+        # Read test content (from .rac.test companion or inline)
         try:
-            rac_content = Path(rac_file).read_text()
+            rac_content = self._read_test_content(rac_file)
         except Exception as e:
             duration = int((time.time() - start) * 1000)
             return ValidationResult(
                 validator_name="policyengine",
                 passed=False,
                 score=0.0,
-                issues=[f"Failed to read RAC file: {e}"],
+                issues=[f"Failed to read RAC/test file: {e}"],
                 duration_ms=duration,
                 error=str(e),
             )
@@ -904,6 +904,18 @@ Output ONLY valid JSON:
             duration_ms=duration,
         )
 
+    def _read_test_content(self, rac_file: Path) -> str:
+        """Read test content from .rac.test companion file or inline tests.
+
+        Checks for companion .rac.test file first, falls back to inline.
+        """
+        # Check for companion .rac.test file
+        test_file = Path(str(rac_file) + ".test")
+        if test_file.exists():
+            return test_file.read_text()
+        # Fall back to inline tests in the .rac file itself
+        return rac_file.read_text()
+
     def _run_taxsim(self, rac_file: Path) -> ValidationResult:
         """Validate against TAXSIM oracle.
 
@@ -913,16 +925,16 @@ Output ONLY valid JSON:
         start = time.time()
         issues = []
 
-        # Read RAC file
+        # Read test content (from .rac.test companion or inline)
         try:
-            rac_content = Path(rac_file).read_text()
+            rac_content = self._read_test_content(rac_file)
         except Exception as e:
             duration = int((time.time() - start) * 1000)
             return ValidationResult(
                 validator_name="taxsim",
                 passed=False,
                 score=0.0,
-                issues=[f"Failed to read RAC file: {e}"],
+                issues=[f"Failed to read RAC/test file: {e}"],
                 duration_ms=duration,
                 error=str(e),
             )
@@ -934,9 +946,9 @@ Output ONLY valid JSON:
             duration = int((time.time() - start) * 1000)
             return ValidationResult(
                 validator_name="taxsim",
-                passed=True,
-                score=1.0,
-                issues=["No test cases found to validate"],
+                passed=False,
+                score=None,
+                issues=["No test cases found — cannot validate"],
                 duration_ms=duration,
             )
 
@@ -1157,43 +1169,92 @@ Output ONLY valid JSON:
     def _extract_tests_from_rac_v2(self, rac_content: str) -> list[dict]:
         """Extract test cases from per-definition test blocks.
 
-        Supports both unified `name:` and legacy `variable name:` syntax.
+        Supports three formats:
+        1. .rac.test format: `variable_name:` with direct list of test cases
+        2. Unified `name:` blocks with nested `tests:` section
+        3. Legacy `tests:` top-level section
+
         Returns list of dicts with keys: variable, name, period, inputs, expect.
         """
         tests = []
 
-        # Match both unified `name:` and legacy `variable name:` definition blocks
-        var_pattern = re.compile(
-            r"^(?:variable\s+)?(\w+):\s*\n(.*?)(?=^(?:variable\s+)?\w+:|\Z)",
-            re.MULTILINE | re.DOTALL,
-        )
+        # Try full YAML parse first — handles .rac.test format cleanly
+        try:
+            # Strip comments and docstrings before parsing
+            content_lines = []
+            in_docstring = False
+            for line in rac_content.split("\n"):
+                stripped = line.strip()
+                if stripped.startswith('"""') or stripped.startswith("'''"):
+                    if in_docstring:
+                        in_docstring = False
+                        continue
+                    elif stripped.count('"""') == 1 or stripped.count("'''") == 1:
+                        in_docstring = True
+                        continue
+                if in_docstring:
+                    continue
+                if stripped.startswith("#"):
+                    continue
+                content_lines.append(line)
 
-        for var_match in var_pattern.finditer(rac_content):
-            var_name = var_match.group(1)
-            var_block = var_match.group(2)
+            clean_content = "\n".join(content_lines)
+            parsed = yaml.safe_load(clean_content)
 
-            # Find tests section within this variable block
-            tests_pattern = re.compile(
-                r"^\s+tests:\s*\n((?:\s+-.*\n?|\s+\w.*\n?)*)",
-                re.MULTILINE,
+            if isinstance(parsed, dict):
+                for key, value in parsed.items():
+                    # Skip non-test keys (status, imports, entity, etc.)
+                    if key in (
+                        "status", "imports", "entity", "period", "dtype",
+                        "unit", "label", "description", "default",
+                    ):
+                        continue
+                    # .rac.test format: variable_name: [list of test dicts]
+                    if isinstance(value, list):
+                        for test_case in value:
+                            if isinstance(test_case, dict) and "expect" in test_case:
+                                test_case["variable"] = key
+                                tests.append(test_case)
+                    # Nested tests: section within a variable block
+                    elif isinstance(value, dict) and "tests" in value:
+                        for test_case in value.get("tests", []):
+                            if isinstance(test_case, dict) and "expect" in test_case:
+                                test_case["variable"] = key
+                                tests.append(test_case)
+        except Exception:
+            pass
+
+        # Fallback: regex-based extraction for inline tests
+        if not tests:
+            var_pattern = re.compile(
+                r"^(?:variable\s+)?(\w+):\s*\n(.*?)(?=^(?:variable\s+)?\w+:|\Z)",
+                re.MULTILINE | re.DOTALL,
             )
-            tests_match = tests_pattern.search(var_block)
-            if not tests_match:
-                continue
 
-            tests_yaml_str = tests_match.group(1)
-            try:
-                parsed = yaml.safe_load(f"items:\n{tests_yaml_str}")
-                if parsed and "items" in parsed and isinstance(parsed["items"], list):
-                    for test_case in parsed["items"]:
-                        if isinstance(test_case, dict) and "expect" in test_case:
-                            test_case["variable"] = var_name
-                            tests.append(test_case)
-            except Exception:
-                # Try individual test extraction as fallback
-                pass
+            for var_match in var_pattern.finditer(rac_content):
+                var_name = var_match.group(1)
+                var_block = var_match.group(2)
 
-        # If no v2-style tests found, fall back to legacy extraction
+                tests_pattern = re.compile(
+                    r"^\s+tests:\s*\n((?:\s+-.*\n?|\s+\w.*\n?)*)",
+                    re.MULTILINE,
+                )
+                tests_match = tests_pattern.search(var_block)
+                if not tests_match:
+                    continue
+
+                tests_yaml_str = tests_match.group(1)
+                try:
+                    parsed = yaml.safe_load(f"items:\n{tests_yaml_str}")
+                    if parsed and "items" in parsed and isinstance(parsed["items"], list):
+                        for test_case in parsed["items"]:
+                            if isinstance(test_case, dict) and "expect" in test_case:
+                                test_case["variable"] = var_name
+                                tests.append(test_case)
+                except Exception:
+                    pass
+
+        # Last resort: legacy extraction
         if not tests:
             tests = self._extract_tests_from_rac(rac_content)
 

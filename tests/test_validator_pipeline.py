@@ -986,8 +986,8 @@ class TestRunTAXSIM:
         rac_file = rac_us / "no_tests.rac"
         rac_file.write_text("simple_var:\n  entity: Person\n  dtype: Money\n")
         result = pipeline._run_taxsim(rac_file)
-        assert result.passed is True
-        assert result.score == 1.0
+        assert result.passed is False
+        assert result.score is None
 
     def test_taxsim_with_wage_inputs(self, pipeline, temp_dirs):
         """TAXSIM with mappable wage inputs."""

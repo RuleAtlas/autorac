@@ -438,7 +438,7 @@ class Orchestrator:
             "--model",
             self.model,
             "--mcp-config",
-            "{}",
+            '{"mcpServers":{}}',
             "--strict-mcp-config",
             "-p",
             prompt,
@@ -554,6 +554,11 @@ class Orchestrator:
                 oracle_context["taxsim_match"] = (
                     sum(taxsim_scores) / len(taxsim_scores) * 100
                 )
+            oracle_context["files_tested"] = len(pe_scores) + len(taxsim_scores)
+            oracle_context["files_total"] = len(rac_files)
+            oracle_context["files_untested"] = len(rac_files) - max(
+                len(pe_scores), len(taxsim_scores)
+            )
             oracle_context["discrepancies"] = [
                 {"description": issue} for issue in all_issues[:10]
             ]
@@ -561,9 +566,14 @@ class Orchestrator:
             print("  No RAC files found to validate", flush=True)
 
         duration = time.time() - oracle_start
+        tested = oracle_context.get("files_tested", 0)
+        total = oracle_context.get("files_total", 0)
+        untested = oracle_context.get("files_untested", total)
+        pe_str = f"{oracle_context['pe_match']:.1f}%" if oracle_context.get("pe_match") is not None else "UNTESTED"
+        taxsim_str = f"{oracle_context['taxsim_match']:.1f}%" if oracle_context.get("taxsim_match") is not None else "UNTESTED"
         print(
-            f"  DONE: PE={oracle_context.get('pe_match', 'N/A')}%, "
-            f"TAXSIM={oracle_context.get('taxsim_match', 'N/A')}% ({duration:.1f}s)",
+            f"  DONE: PE={pe_str}, TAXSIM={taxsim_str} "
+            f"({untested}/{total} files had no tests) ({duration:.1f}s)",
             flush=True,
         )
 
@@ -1373,10 +1383,21 @@ Return ONLY the .rac file content. No markdown fences, no explanation. The file 
     def _format_oracle_summary(self, context: dict) -> str:
         """Format oracle context for reviewer prompts."""
         parts = []
+        total = context.get("files_total", 0)
+        untested = context.get("files_untested", total)
+        if untested > 0:
+            parts.append(
+                f"WARNING: {untested}/{total} files had NO inline tests "
+                f"and could not be validated against oracles."
+            )
         if context.get("pe_match") is not None:
             parts.append(f"PE match: {context['pe_match']}%")
+        else:
+            parts.append("PE: UNTESTED (no inline tests with expected values)")
         if context.get("taxsim_match") is not None:
             parts.append(f"TAXSIM match: {context['taxsim_match']}%")
+        else:
+            parts.append("TAXSIM: UNTESTED (no inline tests)")
         if context.get("discrepancies"):
             parts.append(f"Discrepancies: {len(context['discrepancies'])}")
             for d in context["discrepancies"][:3]:
