@@ -1033,6 +1033,158 @@ Output ONLY valid JSON:
                 error=str(e),
             )
 
+    def _run_microdata_benchmark(
+        self,
+        output_path: Path,
+        pe_variable: str = "eitc",
+        year: int = 2024,
+        sample_size: int | None = None,
+    ) -> ValidationResult:
+        """Benchmark RAC encoding against PolicyEngine using CPS microdata.
+
+        Runs PE Microsimulation on the enhanced CPS, extracts the target
+        variable for all tax units, and reports the benchmark. Since RAC
+        doesn't have a runtime yet, this establishes the PE baseline that
+        RAC must match as inputs get wired up.
+
+        Args:
+            output_path: Directory containing .rac files for the section.
+            pe_variable: PE variable to benchmark against (e.g., "eitc").
+            year: Tax year for the simulation.
+            sample_size: If set, only use this many tax units (for speed).
+
+        Returns:
+            ValidationResult with benchmark statistics.
+        """
+        start = time.time()
+        issues = []
+
+        # Find PE-capable Python
+        pe_python = self._find_pe_python()
+        if not pe_python:
+            duration = int((time.time() - start) * 1000)
+            return ValidationResult(
+                validator_name="microdata_benchmark",
+                passed=False,
+                score=0.0,
+                issues=["No PolicyEngine-capable Python found"],
+                duration_ms=duration,
+                error="policyengine-us not available",
+            )
+
+        # Run PE microsimulation and collect statistics
+        sample_clause = ""
+        if sample_size:
+            sample_clause = f".head({sample_size})"
+
+        script = f"""
+import json
+import numpy as np
+from policyengine_us import Microsimulation
+
+m = Microsimulation()
+values = m.calculate('{pe_variable}', {year})
+weights = m.calculate('tax_unit_weight', {year})
+
+# Core stats
+total = len(values)
+nonzero = int(np.sum(np.array(values) > 0))
+weights_arr = np.array(weights)
+values_arr = np.array(values)
+weighted_nonzero = float(np.sum(weights_arr * (values_arr > 0)))
+weighted_total = float(np.sum(weights_arr))
+weighted_sum = float(np.sum(weights_arr * values_arr))
+mean_val = float(values.mean())
+median_val = float(np.median(values))
+max_val = float(values.max())
+p25 = float(np.percentile(values[values > 0], 25)) if nonzero > 0 else 0
+p75 = float(np.percentile(values[values > 0], 75)) if nonzero > 0 else 0
+
+result = {{
+    "variable": "{pe_variable}",
+    "year": {year},
+    "total_tax_units": total,
+    "nonzero_count": nonzero,
+    "weighted_nonzero": weighted_nonzero,
+    "weighted_total": weighted_total,
+    "weighted_sum_billions": weighted_sum / 1e9,
+    "mean": mean_val,
+    "median": median_val,
+    "max": max_val,
+    "p25_nonzero": p25,
+    "p75_nonzero": p75,
+}}
+print("BENCHMARK:" + json.dumps(result))
+"""
+
+        output = self._run_pe_subprocess(script, pe_python)
+
+        if output is None:
+            duration = int((time.time() - start) * 1000)
+            return ValidationResult(
+                validator_name="microdata_benchmark",
+                passed=False,
+                score=0.0,
+                issues=["PE microsimulation failed to run"],
+                duration_ms=duration,
+                error="Microsimulation execution failed",
+            )
+
+        # Parse benchmark results
+        try:
+            benchmark_line = [
+                line for line in output.strip().split("\n")
+                if line.startswith("BENCHMARK:")
+            ]
+            if not benchmark_line:
+                duration = int((time.time() - start) * 1000)
+                return ValidationResult(
+                    validator_name="microdata_benchmark",
+                    passed=False,
+                    score=0.0,
+                    issues=[f"No BENCHMARK output from PE. Output: {output[:200]}"],
+                    duration_ms=duration,
+                )
+
+            stats = json.loads(benchmark_line[0].split("BENCHMARK:")[1])
+
+            # RAC match rate starts at 0% — no runtime yet
+            rac_match_rate = 0.0
+
+            issues = [
+                f"PE benchmark for {pe_variable} ({year}):",
+                f"  Tax units: {stats['total_tax_units']:,} "
+                f"({stats['nonzero_count']:,} with {pe_variable} > 0)",
+                f"  Weighted recipients: {stats['weighted_nonzero']:,.0f}",
+                f"  Weighted total: ${stats['weighted_sum_billions']:.1f}B",
+                f"  Mean: ${stats['mean']:,.0f}, Median: ${stats['median']:,.0f}, "
+                f"Max: ${stats['max']:,.0f}",
+                f"  P25-P75 (nonzero): ${stats['p25_nonzero']:,.0f}-${stats['p75_nonzero']:,.0f}",
+                f"  RAC match rate: {rac_match_rate:.1%} "
+                f"(no RAC runtime — benchmark only)",
+            ]
+
+            duration = int((time.time() - start) * 1000)
+            return ValidationResult(
+                validator_name="microdata_benchmark",
+                passed=False,  # 0% match until RAC runtime exists
+                score=rac_match_rate,
+                issues=issues,
+                duration_ms=duration,
+                raw_output=json.dumps(stats, indent=2),
+            )
+
+        except Exception as e:
+            duration = int((time.time() - start) * 1000)
+            return ValidationResult(
+                validator_name="microdata_benchmark",
+                passed=False,
+                score=0.0,
+                issues=[f"Failed to parse benchmark output: {e}"],
+                duration_ms=duration,
+                error=str(e),
+            )
+
     def _extract_tests_from_rac(self, rac_content: str) -> list[dict]:
         """Extract test cases from RAC file content.
 

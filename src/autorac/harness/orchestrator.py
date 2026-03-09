@@ -562,6 +562,29 @@ class Orchestrator:
             oracle_context["discrepancies"] = [
                 {"description": issue} for issue in all_issues[:10]
             ]
+
+            # Microdata benchmark: run PE microsimulation for target variable
+            pe_variable = self._infer_pe_variable(output_path)
+            if pe_variable:
+                print(
+                    f"  Microdata benchmark: {pe_variable} (CPS)",
+                    flush=True,
+                )
+                try:
+                    benchmark = pipeline._run_microdata_benchmark(
+                        output_path, pe_variable=pe_variable
+                    )
+                    oracle_context["microdata_benchmark"] = {
+                        "variable": pe_variable,
+                        "score": benchmark.score,
+                        "issues": benchmark.issues,
+                    }
+                    if benchmark.raw_output:
+                        oracle_context["microdata_stats"] = benchmark.raw_output
+                    for issue in benchmark.issues:
+                        print(f"    {issue}", flush=True)
+                except Exception as e:
+                    print(f"    Benchmark error: {e}", flush=True)
         else:
             print("  No RAC files found to validate", flush=True)
 
@@ -1032,6 +1055,33 @@ Read any .rac file for reference on style and patterns."""
     # ========================================================================
     # External dependency resolution
     # ========================================================================
+
+    # Map IRC section → PolicyEngine variable for microdata benchmarking
+    _PE_VARIABLE_MAP = {
+        "32": "eitc",
+        "24": "ctc",
+        "21": "cdcc",  # child and dependent care credit
+        "36B": "premium_tax_credit",
+        "63": "standard_deduction",
+        "1": "income_tax",
+        "62": "adjusted_gross_income",
+    }
+
+    def _infer_pe_variable(self, output_path: Path) -> str | None:
+        """Infer the PolicyEngine variable from the output path.
+
+        Maps IRC section numbers to PE variable names for benchmarking.
+        """
+        # Extract section from path like .../statute/26/32/...
+        parts = output_path.parts
+        try:
+            statute_idx = parts.index("statute")
+            if statute_idx + 2 < len(parts):
+                section = parts[statute_idx + 2]  # e.g., "32"
+                return self._PE_VARIABLE_MAP.get(section)
+        except ValueError:
+            pass
+        return None
 
     _IMPORT_RE = re.compile(r"^\s*-\s+(\S+)#(\S+)", re.MULTILINE)
 
