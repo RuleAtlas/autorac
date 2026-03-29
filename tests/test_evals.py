@@ -150,6 +150,33 @@ class TestAknSectionEval:
         )
 
 
+class TestEvalPrompt:
+    def test_build_eval_prompt_includes_rac_syntax_guardrails(self, tmp_path):
+        workspace = prepare_eval_workspace(
+            citation="9 CCR 2503-6 3.606.1",
+            runner=parse_runner_spec("codex:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text="Grant standard is 165 for one child.",
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "9 CCR 2503-6 3.606.1",
+            "cold",
+            workspace,
+            [],
+            target_file_name="9-CCR-2503-6-3.606.1.rac",
+            include_tests=True,
+        )
+
+        assert "Do not invent schema keys like `namespace:`, `parameter`, `variable`, or `rule:`." in prompt
+        assert "entity:" in prompt
+        assert "period:" in prompt
+        assert "dtype:" in prompt
+
+
 class TestRepoAugmentedContext:
     def test_prepare_eval_workspace_allows_arbitrary_identifier_with_explicit_context(
         self, tmp_path

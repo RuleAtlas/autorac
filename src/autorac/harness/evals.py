@@ -712,6 +712,16 @@ Rules:
 - Any numeric literal in your output must appear in `./source.txt`, unless it is -1, 0, 1, 2, or 3.
 - Include the source text in a triple-quoted docstring.
 - Use RAC DSL conventions.
+- Do not invent schema keys like `namespace:`, `parameter`, `variable`, or `rule:`.
+- Prefer standard RAC blocks shaped like:
+  example_name:
+      entity: TaxUnit
+      period: Month
+      dtype: Money
+      unit: USD
+      from 2024-07-01:
+          165
+- For derived values, keep using normal RAC blocks with `entity`, `period`, `dtype`, and `from YYYY-MM-DD:` formulas.
 {file_output_rules}
 """
 
