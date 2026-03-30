@@ -1014,8 +1014,10 @@ Rules:
       unit: USD
       from 2024-07-01:
           165
+- For conditionals, RAC uses inline conditional expressions like `if condition: value else: other_value`.
 - For derived values, keep using normal RAC blocks with `entity`, `period`, `dtype`, and `from YYYY-MM-DD:` formulas.
-- Do not use Python inline ternaries like `x if cond else y`; use RAC `if:` / `else:` blocks instead.
+- Do not use Python inline ternaries like `x if cond else y`; use RAC conditional expressions instead.
+- Do not use YAML-style `if:` / `then:` / `else:` blocks.
 {file_output_rules}
 """
 

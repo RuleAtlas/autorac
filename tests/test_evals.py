@@ -578,6 +578,31 @@ class TestEvalPrompt:
         assert "Do not use Python inline ternaries" in prompt
         assert "`x if cond else y`" in prompt
 
+    def test_build_eval_prompt_requires_rac_conditional_expression_syntax(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2006/965/regulation/2",
+            runner=parse_runner_spec("codex:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text="2. Rate of child benefit ... 26.05",
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2006/965/regulation/2",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2006-965-regulation-2.rac",
+            include_tests=True,
+        )
+
+        assert "`if condition: value else: other_value`" in prompt
+        assert "Do not use YAML-style `if:` / `then:` / `else:` blocks." in prompt
+
 
 class TestRepoAugmentedContext:
     def test_prepare_eval_workspace_allows_arbitrary_identifier_with_explicit_context(
