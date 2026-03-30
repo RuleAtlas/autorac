@@ -278,6 +278,13 @@ def extract_akn_section_text(akn_file: Path, section_eid: str) -> str:
     if title:
         parts.append(title)
 
+    for remark in section.findall("akn:remark", AKN_NS):
+        if remark.get("status") != "editorial":
+            continue
+        remark_text = _collapse_whitespace("".join(remark.itertext()))
+        if remark_text:
+            parts.append(remark_text)
+
     content = section.find("akn:content", AKN_NS)
     if content is None:
         return "\n\n".join(parts).strip()

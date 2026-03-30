@@ -108,6 +108,33 @@ class TestAknSectionEval:
         assert "0 | 165" in text
         assert "G. Pregnancy allowance text." in text
 
+    def test_extract_akn_section_text_includes_editorial_effective_date(self, tmp_path):
+        akn_file = tmp_path / "doc.xml"
+        akn_file.write_text(
+            """
+<akomaNtoso xmlns="http://docs.oasis-open.org/legaldocml/ns/akn/3.0">
+  <doc>
+    <mainBody>
+      <hcontainer name="section" eId="sec_3_606_1_f">
+        <num>F</num>
+        <heading>Grant Standard</heading>
+        <remark status="editorial">Effective date: 2024-07-01</remark>
+        <content>
+          <p>Grant table text.</p>
+        </content>
+      </hcontainer>
+    </mainBody>
+  </doc>
+</akomaNtoso>
+            """.strip()
+        )
+
+        text = extract_akn_section_text(akn_file, "sec_3_606_1_f")
+
+        assert "F Grant Standard" in text
+        assert "Effective date: 2024-07-01" in text
+        assert "Grant table text." in text
+
     def test_run_akn_section_eval_uses_extracted_section_text(self, tmp_path):
         akn_file = tmp_path / "doc.xml"
         akn_file.write_text(
@@ -457,6 +484,7 @@ class TestRepoAugmentedContext:
             "repo-augmented",
             workspace,
             workspace.context_files,
+            "a.rac",
         )
 
         assert "`1998-01-01`" in prompt
