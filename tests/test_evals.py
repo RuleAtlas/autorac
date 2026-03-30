@@ -74,6 +74,49 @@ class TestEvaluateArtifact:
         assert metrics.ungrounded_numeric_count == 1
         assert [item.raw for item in metrics.grounding if not item.grounded] == ["2200"]
 
+    def test_can_include_policyengine_metrics_for_uk_artifact(self, tmp_path):
+        rac_file = tmp_path / "source" / "uksi-2006-965-regulation-2.rac"
+        rac_file.parent.mkdir(parents=True)
+        rac_file.write_text(
+            '"""\nhttps://www.legislation.gov.uk/uksi/2006/965/regulation/2\n"""\n'
+            "status: encoded\n"
+        )
+
+        compile_result = ValidationResult("compile", passed=True)
+        ci_result = ValidationResult("ci", passed=True)
+        pe_result = ValidationResult(
+            "policyengine",
+            passed=True,
+            score=1.0,
+            issues=[],
+        )
+
+        with patch(
+            "autorac.harness.validator_pipeline.ValidatorPipeline._run_compile_check",
+            return_value=compile_result,
+        ), patch(
+            "autorac.harness.validator_pipeline.ValidatorPipeline._run_ci",
+            return_value=ci_result,
+        ), patch(
+            "autorac.harness.validator_pipeline.ValidatorPipeline._run_policyengine",
+            return_value=pe_result,
+        ) as mock_policyengine:
+            metrics = evaluate_artifact(
+                rac_file=rac_file,
+                rac_root=tmp_path,
+                rac_path=Path("/tmp/rac"),
+                source_text="26.05",
+                oracle="policyengine",
+                policyengine_country="uk",
+            )
+
+        assert metrics.compile_pass
+        assert metrics.ci_pass
+        assert metrics.policyengine_pass is True
+        assert metrics.policyengine_score == 1.0
+        assert metrics.policyengine_issues == []
+        mock_policyengine.assert_called_once()
+
 
 class TestAknSectionEval:
     def test_extract_akn_section_text_supports_standard_akn_subsection_tags(self, tmp_path):
@@ -277,6 +320,8 @@ class TestAknSectionEval:
             mock_run_source_eval.call_args.kwargs["source_text"]
             == "3.606.1 Basic Cash Assistance\n\nA. Payment of Basic Cash Assistance Grants"
         )
+        assert mock_run_source_eval.call_args.kwargs["oracle"] == "none"
+        assert mock_run_source_eval.call_args.kwargs["policyengine_country"] == "auto"
 
     def test_run_akn_section_eval_rejects_parent_section_by_default(self, tmp_path):
         akn_file = tmp_path / "doc.xml"
@@ -475,6 +520,8 @@ class TestUkLegislationFetch:
         mock_run.assert_called_once()
         assert mock_run.call_args.kwargs["section_eid"] == "section-1"
         assert mock_run.call_args.kwargs["source_id"] == "ukpga/2010/1/section/1"
+        assert mock_run.call_args.kwargs["oracle"] == "policyengine"
+        assert mock_run.call_args.kwargs["policyengine_country"] == "uk"
 
 
 class TestEvalPrompt:
@@ -883,6 +930,50 @@ class TestSourceEval:
         prompt = mock_prompt_eval.call_args.args[2]
         assert ".rac.test" in prompt
         assert "=== FILE:" in prompt
+
+    def test_run_source_eval_passes_oracle_settings_to_evaluate_artifact(self, tmp_path):
+        rac_root = tmp_path / "rac"
+        rac_root.mkdir()
+
+        with patch(
+            "autorac.harness.evals._run_prompt_eval",
+        ) as mock_prompt_eval, patch(
+            "autorac.harness.evals.evaluate_artifact",
+        ) as mock_evaluate_artifact:
+            mock_prompt_eval.return_value.text = (
+                "=== FILE: uksi-2006-965-regulation-2.rac ===\n"
+                '"""\nhttps://www.legislation.gov.uk/uksi/2006/965/regulation/2\n"""\n'
+                "status: encoded\n"
+                "=== FILE: uksi-2006-965-regulation-2.rac.test ===\n"
+                "- name: base\n"
+                "  input: {}\n"
+                "  output:\n"
+                "    child_benefit_enhanced_rate: 26.05\n"
+            )
+            mock_prompt_eval.return_value.duration_ms = 123
+            mock_prompt_eval.return_value.tokens = None
+            mock_prompt_eval.return_value.estimated_cost_usd = None
+            mock_prompt_eval.return_value.actual_cost_usd = None
+            mock_prompt_eval.return_value.trace = {}
+            mock_prompt_eval.return_value.unexpected_accesses = []
+            mock_prompt_eval.return_value.error = None
+            mock_evaluate_artifact.return_value = None
+
+            run_source_eval(
+                source_id="uksi/2006/965/regulation/2",
+                source_text="26.05",
+                runner_specs=["codex:gpt-5.4"],
+                output_root=tmp_path / "out",
+                rac_path=rac_root,
+                mode="cold",
+                oracle="policyengine",
+                policyengine_country="uk",
+            )
+
+        assert mock_evaluate_artifact.call_args.kwargs["oracle"] == "policyengine"
+        assert (
+            mock_evaluate_artifact.call_args.kwargs["policyengine_country"] == "uk"
+        )
 
     def test_allows_relative_workspace_reads(self, tmp_path):
         (tmp_path / "source.txt").write_text("text\n")

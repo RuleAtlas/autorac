@@ -1704,6 +1704,32 @@ def _default_repo_checkout(name: str) -> Path:
     return repo_root / name
 
 
+def _print_eval_metrics(result) -> None:
+    """Print human-readable eval metrics when present."""
+    if not result.metrics:
+        return
+
+    print(
+        f"  compile={'yes' if result.metrics.compile_pass else 'no'} ci={'yes' if result.metrics.ci_pass else 'no'}"
+    )
+    print(
+        f"  grounded={result.metrics.grounded_numeric_count} ungrounded={result.metrics.ungrounded_numeric_count} embedded_source={'yes' if result.metrics.embedded_source_present else 'no'}"
+    )
+    if result.metrics.policyengine_score is not None:
+        print(
+            f"  policyengine={'yes' if result.metrics.policyengine_pass else 'no'} score={result.metrics.policyengine_score:.1%}"
+        )
+    if result.metrics.taxsim_score is not None:
+        print(
+            f"  taxsim={'yes' if result.metrics.taxsim_pass else 'no'} score={result.metrics.taxsim_score:.1%}"
+        )
+    if result.metrics.ungrounded_numeric_count:
+        offenders = [
+            item.raw for item in result.metrics.grounding if not item.grounded
+        ]
+        print(f"  ungrounded_values={', '.join(offenders[:10])}")
+
+
 def cmd_eval(args):
     """Run deterministic model comparisons on one or more citations."""
     runners = args.runner or ["claude:opus", "codex:gpt-5.4"]
@@ -1748,20 +1774,7 @@ def cmd_eval(args):
         print(f"  retrieved_files={len(result.retrieved_files)}")
         if result.unexpected_accesses:
             print(f"  unexpected_accesses={len(result.unexpected_accesses)}")
-        if result.metrics:
-            print(
-                f"  compile={'yes' if result.metrics.compile_pass else 'no'} ci={'yes' if result.metrics.ci_pass else 'no'}"
-            )
-            print(
-                f"  grounded={result.metrics.grounded_numeric_count} ungrounded={result.metrics.ungrounded_numeric_count} embedded_source={'yes' if result.metrics.embedded_source_present else 'no'}"
-            )
-            if result.metrics.ungrounded_numeric_count:
-                offenders = [
-                    item.raw
-                    for item in result.metrics.grounding
-                    if not item.grounded
-                ]
-                print(f"  ungrounded_values={', '.join(offenders[:10])}")
+        _print_eval_metrics(result)
         if result.error:
             print(f"  error={result.error}")
         print(f"  file={result.output_file}")
@@ -1814,20 +1827,7 @@ def cmd_eval_source(args):
         print(f"  retrieved_files={len(result.retrieved_files)}")
         if result.unexpected_accesses:
             print(f"  unexpected_accesses={len(result.unexpected_accesses)}")
-        if result.metrics:
-            print(
-                f"  compile={'yes' if result.metrics.compile_pass else 'no'} ci={'yes' if result.metrics.ci_pass else 'no'}"
-            )
-            print(
-                f"  grounded={result.metrics.grounded_numeric_count} ungrounded={result.metrics.ungrounded_numeric_count} embedded_source={'yes' if result.metrics.embedded_source_present else 'no'}"
-            )
-            if result.metrics.ungrounded_numeric_count:
-                offenders = [
-                    item.raw
-                    for item in result.metrics.grounding
-                    if not item.grounded
-                ]
-                print(f"  ungrounded_values={', '.join(offenders[:10])}")
+        _print_eval_metrics(result)
         if result.error:
             print(f"  error={result.error}")
         print(f"  file={result.output_file}")
@@ -1882,20 +1882,7 @@ def cmd_eval_akn_section(args):
         print(f"  retrieved_files={len(result.retrieved_files)}")
         if result.unexpected_accesses:
             print(f"  unexpected_accesses={len(result.unexpected_accesses)}")
-        if result.metrics:
-            print(
-                f"  compile={'yes' if result.metrics.compile_pass else 'no'} ci={'yes' if result.metrics.ci_pass else 'no'}"
-            )
-            print(
-                f"  grounded={result.metrics.grounded_numeric_count} ungrounded={result.metrics.ungrounded_numeric_count} embedded_source={'yes' if result.metrics.embedded_source_present else 'no'}"
-            )
-            if result.metrics.ungrounded_numeric_count:
-                offenders = [
-                    item.raw
-                    for item in result.metrics.grounding
-                    if not item.grounded
-                ]
-                print(f"  ungrounded_values={', '.join(offenders[:10])}")
+        _print_eval_metrics(result)
         if result.error:
             print(f"  error={result.error}")
         print(f"  file={result.output_file}")
@@ -1947,13 +1934,7 @@ def cmd_eval_uk_legislation_section(args):
         print(f"  retrieved_files={len(result.retrieved_files)}")
         if result.unexpected_accesses:
             print(f"  unexpected_accesses={len(result.unexpected_accesses)}")
-        if result.metrics:
-            print(
-                f"  compile={'yes' if result.metrics.compile_pass else 'no'} ci={'yes' if result.metrics.ci_pass else 'no'}"
-            )
-            print(
-                f"  grounded={result.metrics.grounded_numeric_count} ungrounded={result.metrics.ungrounded_numeric_count} embedded_source={'yes' if result.metrics.embedded_source_present else 'no'}"
-            )
+        _print_eval_metrics(result)
         if result.error:
             print(f"  error={result.error}")
         print(f"  file={result.output_file}")

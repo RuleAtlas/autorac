@@ -26,6 +26,7 @@ from .encoding_db import TokenUsage
 from .observability import emit_eval_result, extract_reasoning_output_tokens
 from .pricing import estimate_usage_cost_usd
 from .validator_pipeline import (
+    ValidationResult,
     ValidatorPipeline,
     extract_embedded_source_text,
     extract_grounding_values,
@@ -33,6 +34,7 @@ from .validator_pipeline import (
 )
 
 EvalMode = Literal["cold", "repo-augmented"]
+EvalOracleMode = Literal["none", "policyengine", "all"]
 IMPORT_ITEM_PATTERN = re.compile(r"^\s*-\s*(['\"]?)([^'\"]+?)\1\s*$")
 AKN_NS = {"akn": "http://docs.oasis-open.org/legaldocml/ns/akn/3.0"}
 AKN_CONTAINER_TAGS = {
@@ -104,6 +106,12 @@ class EvalArtifactMetrics:
     grounded_numeric_count: int
     ungrounded_numeric_count: int
     grounding: list[GroundingMetric]
+    policyengine_pass: bool | None = None
+    policyengine_score: float | None = None
+    policyengine_issues: list[str] = field(default_factory=list)
+    taxsim_pass: bool | None = None
+    taxsim_score: float | None = None
+    taxsim_issues: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -243,6 +251,8 @@ def run_source_eval(
     rac_path: Path,
     mode: EvalMode = "repo-augmented",
     extra_context_paths: list[Path] | None = None,
+    oracle: EvalOracleMode = "none",
+    policyengine_country: str = "auto",
 ) -> list[EvalResult]:
     """Run a deterministic comparison over one arbitrary source slice."""
     results: list[EvalResult] = []
@@ -257,6 +267,8 @@ def run_source_eval(
                 rac_path=rac_path,
                 mode=mode,
                 extra_context_paths=extra_context_paths or [],
+                oracle=oracle,
+                policyengine_country=policyengine_country,
             )
         )
 
@@ -523,6 +535,8 @@ def run_akn_section_eval(
     mode: EvalMode = "repo-augmented",
     extra_context_paths: list[Path] | None = None,
     allow_parent: bool = False,
+    oracle: EvalOracleMode = "none",
+    policyengine_country: str = "auto",
 ) -> list[EvalResult]:
     """Run a deterministic comparison on one section extracted from AKN XML."""
     resolved_section_eid = _resolve_akn_section_eid(
@@ -538,6 +552,8 @@ def run_akn_section_eval(
         rac_path=rac_path,
         mode=mode,
         extra_context_paths=extra_context_paths,
+        oracle=oracle,
+        policyengine_country=policyengine_country,
     )
 
 
@@ -564,6 +580,8 @@ def run_legislation_gov_uk_section_eval(
         mode=mode,
         extra_context_paths=extra_context_paths,
         allow_parent=allow_parent,
+        oracle="policyengine",
+        policyengine_country="uk",
     )
 
 
@@ -711,15 +729,41 @@ def evaluate_artifact(
     rac_root: Path,
     rac_path: Path,
     source_text: str,
+    oracle: EvalOracleMode = "none",
+    policyengine_country: str = "auto",
 ) -> EvalArtifactMetrics:
-    """Evaluate one RAC file with deterministic checks only."""
+    """Evaluate one RAC file with deterministic checks plus optional oracles."""
     pipeline = ValidatorPipeline(
         rac_us_path=rac_root,
         rac_path=rac_path,
-        enable_oracles=False,
+        enable_oracles=oracle != "none",
+        policyengine_country=policyengine_country,
     )
     compile_result = pipeline._run_compile_check(rac_file)
     ci_result = pipeline._run_ci(rac_file)
+
+    policyengine_result = None
+    taxsim_result = None
+    if oracle in ("policyengine", "all"):
+        try:
+            policyengine_result = pipeline._run_policyengine(rac_file)
+        except Exception as exc:
+            policyengine_result = ValidationResult(
+                validator_name="policyengine",
+                passed=False,
+                error=str(exc),
+                issues=[str(exc)],
+            )
+    if oracle == "all":
+        try:
+            taxsim_result = pipeline._run_taxsim(rac_file)
+        except Exception as exc:
+            taxsim_result = ValidationResult(
+                validator_name="taxsim",
+                passed=False,
+                error=str(exc),
+                issues=[str(exc)],
+            )
 
     content = rac_file.read_text()
     embedded_source = extract_embedded_source_text(content)
@@ -747,6 +791,18 @@ def evaluate_artifact(
             1 for item in grounding_metrics if not item.grounded
         ),
         grounding=grounding_metrics,
+        policyengine_pass=(
+            policyengine_result.passed if policyengine_result is not None else None
+        ),
+        policyengine_score=(
+            policyengine_result.score if policyengine_result is not None else None
+        ),
+        policyengine_issues=(
+            policyengine_result.issues if policyengine_result is not None else []
+        ),
+        taxsim_pass=taxsim_result.passed if taxsim_result is not None else None,
+        taxsim_score=taxsim_result.score if taxsim_result is not None else None,
+        taxsim_issues=taxsim_result.issues if taxsim_result is not None else [],
     )
 
 
@@ -843,6 +899,8 @@ def _run_single_source_eval(
     rac_path: Path,
     mode: EvalMode,
     extra_context_paths: list[Path],
+    oracle: EvalOracleMode,
+    policyengine_country: str,
 ) -> EvalResult:
     """Run one eval on an arbitrary source slice rather than a USC citation."""
     workspace = prepare_eval_workspace(
@@ -887,6 +945,8 @@ def _run_single_source_eval(
             rac_root=output_file.parents[1],
             rac_path=rac_path,
             source_text=source_text,
+            oracle=oracle,
+            policyengine_country=policyengine_country,
         )
 
     tokens = response.tokens
