@@ -3034,6 +3034,32 @@ class TestIsPeTestMappable:
         assert mappable is False
         assert "does not represent directly" in reason
 
+    def test_uk_pension_credit_single_zero_partner_alternate_is_unmappable(
+        self, pipeline
+    ):
+        mappable, reason = pipeline._is_pe_test_mappable(
+            "uk",
+            "standard_minimum_guarantee_single_weekly_rate",
+            {"claimant_has_partner": True},
+            0,
+        )
+
+        assert mappable is False
+        assert "single-rate branch" in reason
+
+    def test_uk_pension_credit_single_zero_no_partner_false_is_unmappable(
+        self, pipeline
+    ):
+        mappable, reason = pipeline._is_pe_test_mappable(
+            "uk",
+            "standard_minimum_guarantee_single_weekly_rate",
+            {"claimant_has_no_partner": False},
+            0,
+        )
+
+        assert mappable is False
+        assert "single-rate branch" in reason
+
     def test_uk_scottish_child_payment_helper_boolean_is_unmappable(self, pipeline):
         mappable, reason = pipeline._is_pe_test_mappable(
             "uk",
