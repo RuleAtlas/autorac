@@ -2561,6 +2561,16 @@ print(f'RESULT:{{val}}')
             rac_var_lower
         ):
             lowered_keys = [str(key).lower() for key in lowered.keys()]
+            branch_category = None
+            if "80a_2_a" in rac_var_lower:
+                branch_category = ("single", "london", "no_child")
+            elif "80a_2_b" in rac_var_lower:
+                branch_category = ("other", "london", "mixed")
+            elif "80a_2_c" in rac_var_lower:
+                branch_category = ("single", "outside_london", "no_child")
+            elif "80a_2_d" in rac_var_lower:
+                branch_category = ("other", "outside_london", "mixed")
+
             leaf_in_london = any(
                 marker in rac_var_lower
                 for marker in ("greater_london", "in_london", "london")
@@ -2577,46 +2587,55 @@ print(f'RESULT:{{val}}')
                 for marker in ("child", "young_person", "family")
             ) and "no_child" not in rac_var_lower
 
-            if not leaf_in_london:
-                if any("outside_london" in key for key in lowered_keys):
-                    leaf_in_london = False
-                elif any("not_resident_in_greater_london" in key for key in lowered_keys):
-                    leaf_in_london = False
-                elif any("greater_london" in key for key in lowered_keys):
-                    leaf_in_london = True
+            if branch_category is not None:
+                leaf_is_single = branch_category[0] == "single"
+                leaf_in_london = branch_category[1] == "london"
+                leaf_has_child = branch_category[2] == "child"
 
-            if not leaf_is_single:
-                if any(
-                    "joint_claimant" in key or "couple" in key or "family" in key
-                    for key in lowered_keys
-                ):
-                    leaf_is_single = False
-                elif any(
-                    "single_claimant" in key or key.endswith("single")
-                    for key in lowered_keys
-                ):
-                    leaf_is_single = True
+            if branch_category is None:
+                if not leaf_in_london:
+                    if any("outside_london" in key for key in lowered_keys):
+                        leaf_in_london = False
+                    elif any(
+                        "not_resident_in_greater_london" in key
+                        for key in lowered_keys
+                    ):
+                        leaf_in_london = False
+                    elif any("greater_london" in key for key in lowered_keys):
+                        leaf_in_london = True
 
-            if not leaf_has_child:
-                if any(
-                    "not_responsible_for_child_or_qualifying_young_person" in key
-                    or "no_child" in key
-                    or "without_child" in key
-                    for key in lowered_keys
-                ):
-                    leaf_has_child = False
-                elif any(
-                    (
-                        "responsible_for_child_or_qualifying_young_person" in key
-                        or "child" in key
-                        or "young_person" in key
-                        or "family" in key
-                    )
-                    and "not_responsible_for_child_or_qualifying_young_person"
-                    not in key
-                    for key in lowered_keys
-                ):
-                    leaf_has_child = True
+                if not leaf_is_single:
+                    if any(
+                        "joint_claimant" in key or "couple" in key or "family" in key
+                        for key in lowered_keys
+                    ):
+                        leaf_is_single = False
+                    elif any(
+                        "single_claimant" in key or key.endswith("single")
+                        for key in lowered_keys
+                    ):
+                        leaf_is_single = True
+
+                if not leaf_has_child:
+                    if any(
+                        "not_responsible_for_child_or_qualifying_young_person" in key
+                        or "no_child" in key
+                        or "without_child" in key
+                        for key in lowered_keys
+                    ):
+                        leaf_has_child = False
+                    elif any(
+                        (
+                            "responsible_for_child_or_qualifying_young_person" in key
+                            or "child" in key
+                            or "young_person" in key
+                            or "family" in key
+                        )
+                        and "not_responsible_for_child_or_qualifying_young_person"
+                        not in key
+                        for key in lowered_keys
+                    ):
+                        leaf_has_child = True
 
             in_london = leaf_in_london
             explicit_greater_london_keys = [

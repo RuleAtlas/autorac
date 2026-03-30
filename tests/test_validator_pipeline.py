@@ -2388,6 +2388,27 @@ class TestBuildPeScenarioScript:
         assert "is_single = True" in script
         assert "has_child = False" in script
 
+    def test_uk_benefit_cap_80a_2_c_script_uses_single_outside_london_no_child_leaf(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "benefit_cap",
+            {
+                "is_single_claimant": True,
+                "is_resident_in_greater_london": False,
+                "is_responsible_for_child_or_qualifying_young_person": False,
+                "period": "2025-04-01",
+            },
+            "2025",
+            14753,
+            country="uk",
+            rac_var="benefit_cap_applicable_annual_limit_under_80A_2_c",
+        )
+        assert "'region': {2025: 'NORTH_EAST'}" in script
+        assert "'spouse'" not in script
+        assert "'child'" not in script
+        assert "if is_single and not in_london and not has_child:" in script
+
     def test_uk_benefit_cap_explicit_inputs_override_leaf_heuristics(
         self, pipeline
     ):
