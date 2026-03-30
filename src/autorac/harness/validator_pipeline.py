@@ -272,7 +272,9 @@ def extract_numbers_from_text(text: str) -> set[float]:
     """Extract numeric values from embedded statute text."""
     numbers = set()
 
-    for match in re.finditer(r"(?:^|(?<=[\s$(\[,]))(-?[\d,]+(?:\.\d+)?)\b", text):
+    for match in re.finditer(
+        r"(?:^|(?<=[\s$£€(\[,]))(-?[\d,]+(?:\.\d+)?)\b", text
+    ):
         raw = match.group(1).replace(",", "")
         with contextlib.suppress(ValueError):
             numbers.add(float(raw))

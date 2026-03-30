@@ -1015,6 +1015,7 @@ Rules:
       from 2024-07-01:
           165
 - For derived values, keep using normal RAC blocks with `entity`, `period`, `dtype`, and `from YYYY-MM-DD:` formulas.
+- Do not use Python inline ternaries like `x if cond else y`; use RAC `if:` / `else:` blocks instead.
 {file_output_rules}
 """
 

@@ -30,6 +30,7 @@ from autorac.harness.validator_pipeline import (
     PARAMETER_REVIEWER_PROMPT,
     RAC_REVIEWER_PROMPT,
     OracleSubprocessResult,
+    extract_numbers_from_text,
     extract_grounding_values,
     run_claude_code,
 )
@@ -159,6 +160,17 @@ grant_standard:
             cmd = mock_run.call_args[0][0]
             assert "--model" in cmd
             assert "opus-4" in cmd
+
+
+class TestExtractNumbersFromText:
+    def test_extracts_currency_prefixed_values(self):
+        numbers = extract_numbers_from_text(
+            "The weekly rate is £26.05, the alternate rate is €14.00, and $5 remains."
+        )
+
+        assert 26.05 in numbers
+        assert 14.0 in numbers
+        assert 5.0 in numbers
 
 
 # =========================================================================
