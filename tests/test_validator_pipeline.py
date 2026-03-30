@@ -2267,6 +2267,36 @@ class TestBuildPeScenarioScript:
         )
         assert "'age': {2025: 17}" in script
 
+    def test_uk_benefit_cap_single_london_leaf_script_builds_single_london_case(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "benefit_cap",
+            {"period": "2025-04-01"},
+            "2025",
+            16967,
+            country="uk",
+            rac_var="benefit_cap_single_claimant_greater_london_annual_limit",
+        )
+        assert "'region': {2025: 'LONDON'}" in script
+        assert "'members': ['adult']" in script
+        assert "val = float(annual[0])" in script
+
+    def test_uk_benefit_cap_family_outside_london_leaf_script_builds_family_case(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "benefit_cap",
+            {"period": "2025-04-01"},
+            "2025",
+            22020,
+            country="uk",
+            rac_var="benefit_cap_family_outside_london_annual_limit",
+        )
+        assert "'region': {2025: 'NORTH_EAST'}" in script
+        assert "'spouse'" in script
+        assert "'child'" in script
+
 
 class TestIsPeTestMappable:
     def test_uk_child_benefit_paragraph_exception_true_is_unmappable(self, pipeline):
@@ -2351,6 +2381,16 @@ class TestIsPeTestMappable:
         assert mappable is False
         assert "helper boolean" in reason.lower()
 
+    def test_uk_benefit_cap_helper_boolean_is_unmappable(self, pipeline):
+        mappable, reason = pipeline._is_pe_test_mappable(
+            "uk",
+            "benefit_cap_single_london_applies",
+            {},
+        )
+
+        assert mappable is False
+        assert "helper boolean" in reason.lower()
+
 
 class TestResolvePeVariable:
     def test_resolves_uk_child_benefit_enhanced_rate_family_by_substring(self, pipeline):
@@ -2417,6 +2457,14 @@ class TestResolvePeVariable:
         assert (
             pipeline._resolve_pe_variable("uk", "scottish_child_payment")
             == "scottish_child_payment"
+        )
+
+    def test_resolves_uk_benefit_cap_single_london_annual_limit(self, pipeline):
+        assert (
+            pipeline._resolve_pe_variable(
+                "uk", "benefit_cap_single_claimant_greater_london_annual_limit"
+            )
+            == "benefit_cap"
         )
 
 

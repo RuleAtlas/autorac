@@ -2004,6 +2004,8 @@ print("BENCHMARK:" + json.dumps(result))
                 "scottish_child_payment_weekly_rate": "scottish_child_payment",
                 "scottish_child_payment_weekly_amount": "scottish_child_payment",
                 "scottish_child_payment_regulation_20_1_amount": "scottish_child_payment",
+                "benefit_cap_single_claimant_greater_london_annual_limit": "benefit_cap",
+                "benefit_cap_family_outside_london_annual_limit": "benefit_cap",
             }
 
         return {
@@ -2114,6 +2116,30 @@ print("BENCHMARK:" + json.dumps(result))
             for marker in ("amount", "rate", "weekly", "regulation_20_1", "reg20_1")
         )
 
+    @staticmethod
+    def _is_uk_benefit_cap_amount_var(rac_var: str) -> bool:
+        rac_var_lower = rac_var.lower()
+        if "benefit_cap" not in rac_var_lower:
+            return False
+        if rac_var_lower == "benefit_cap":
+            return True
+        if any(
+            marker in rac_var_lower
+            for marker in ("_applies", "exempt", "reduction", "relevant_amount")
+        ):
+            return False
+        return any(
+            marker in rac_var_lower
+            for marker in (
+                "annual_limit",
+                "single_claimant",
+                "joint_claimant",
+                "greater_london",
+                "outside_london",
+                "family",
+            )
+        )
+
     # PE variables that are defined as monthly (not annual)
     _PE_MONTHLY_VARS = {
         "snap",
@@ -2195,6 +2221,15 @@ print("BENCHMARK:" + json.dumps(result))
                 False,
                 "RAC helper boolean does not have a direct PolicyEngine UK analogue",
             )
+        if (
+            country == "uk"
+            and "benefit_cap" in rac_var_lower
+            and rac_var_lower.endswith("_applies")
+        ):
+            return (
+                False,
+                "RAC helper boolean does not have a direct PolicyEngine UK analogue",
+            )
         return True, None
 
     def _resolve_pe_variable(self, country: str, rac_var: str) -> str | None:
@@ -2214,6 +2249,8 @@ print("BENCHMARK:" + json.dumps(result))
             rac_var_lower
         ):
             return "scottish_child_payment"
+        if country == "uk" and self._is_uk_benefit_cap_amount_var(rac_var_lower):
+            return "benefit_cap"
 
         return None
 
@@ -2514,6 +2551,108 @@ situation = {{
 sim = Simulation(situation=situation)
 annual = sim.calculate('scottish_child_payment', int('{year}'))
 val = float(annual[0]) / 52
+print(f'RESULT:{{val}}')
+"""
+
+        if pe_var == "benefit_cap" and self._is_uk_benefit_cap_amount_var(
+            rac_var_lower
+        ):
+            in_london = any(
+                marker in rac_var_lower
+                for marker in ("greater_london", "in_london", "london")
+            ) and "outside_london" not in rac_var_lower
+            if any(
+                "outside_london" in str(key).lower() and value is not None
+                for key, value in lowered.items()
+            ):
+                in_london = False
+            elif any(
+                "greater_london" in str(key).lower() and value is not None
+                for key, value in lowered.items()
+            ):
+                in_london = True
+
+            is_single = (
+                any(marker in rac_var_lower for marker in ("single_claimant", "single"))
+                and not any(
+                    marker in rac_var_lower
+                    for marker in ("joint_claimant", "couple", "family")
+                )
+            )
+            if any(
+                (
+                    "joint_claimant" in str(key).lower()
+                    or "couple" in str(key).lower()
+                )
+                and bool(value)
+                for key, value in lowered.items()
+            ):
+                is_single = False
+            elif any(
+                "single" in str(key).lower() and value is not None
+                for key, value in lowered.items()
+            ):
+                is_single = any(
+                    bool(value)
+                    for key, value in lowered.items()
+                    if "single" in str(key).lower() and value is not None
+                )
+
+            has_child = any(
+                marker in rac_var_lower
+                for marker in ("child", "young_person", "family")
+            ) and "no_child" not in rac_var_lower
+            if any(
+                (
+                    "no_child" in str(key).lower()
+                    or "without_child" in str(key).lower()
+                )
+                and bool(value)
+                for key, value in lowered.items()
+            ):
+                has_child = False
+            elif any(
+                (
+                    "child" in str(key).lower()
+                    or "young_person" in str(key).lower()
+                )
+                and value is not None
+                for key, value in lowered.items()
+            ):
+                has_child = any(
+                    bool(value)
+                    for key, value in lowered.items()
+                    if (
+                        "child" in str(key).lower()
+                        or "young_person" in str(key).lower()
+                    )
+                    and value is not None
+                )
+
+            members = ["adult"] if is_single else ["adult", "spouse"]
+            people_parts = [f"'adult': {{'age': {{{year}: 30}}}}"]
+            if not is_single:
+                people_parts.append(f"'spouse': {{'age': {{{year}: 30}}}}")
+            if has_child:
+                members.append("child")
+                people_parts.append(f"'child': {{'age': {{{year}: 10}}}}")
+
+            region_value = "LONDON" if in_london else "NORTH_EAST"
+            people = "{" + ", ".join(people_parts) + "}"
+            members_str = "[" + ", ".join(f"'{member}'" for member in members) + "]"
+
+            return f"""
+from policyengine_uk import Simulation
+
+situation = {{
+    'people': {people},
+    'benunits': {{'benunit': {{'members': {members_str}, 'is_benefit_cap_exempt': {{{year}: False}}}}}},
+    'households': {{'household': {{'members': {members_str}, 'region': {{{year}: '{region_value}'}}}}}},
+}}
+
+sim = Simulation(situation=situation)
+annual = sim.calculate('benefit_cap', int('{year}'))
+val = float(annual[0])
 print(f'RESULT:{{val}}')
 """
 
