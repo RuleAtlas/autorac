@@ -2072,6 +2072,20 @@ eligible_case:
         assert tests[0]["inputs"] == {"is_first_child": True}
         assert tests[0]["expect"] == 339.00
 
+    def test_v2_normalizes_comma_formatted_numeric_strings(self, pipeline):
+        content = """
+- name: comma_numeric_case
+  period: 2024-04-06
+  input:
+    wtc_second_adult_element_eligible: true
+  output:
+    wtc_second_adult_element_amount: 2,500
+"""
+        tests = pipeline._extract_tests_from_rac_v2(content)
+
+        assert len(tests) == 1
+        assert tests[0]["expect"] == 2500
+
 
 # =========================================================================
 # _build_pe_situation

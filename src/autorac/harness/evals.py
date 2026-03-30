@@ -1762,10 +1762,13 @@ Available precedent files:
 - For a one-row fixed-amount slice, Do not emit `before YYYY-MM-DD: 0`.
 - For a one-row fixed-amount slice, Do not emit stray blocks like `from 0:`.
 - For a one-row fixed-amount slice, use exactly one grounded `from YYYY-MM-DD:` clause unless `./source.txt` itself states multiple grounded dates or amounts.
+- For a one-row fixed-amount slice, the principal amount variable should usually be a grounded constant under `from YYYY-MM-DD:`; do not wrap it in a conditional formula unless `./source.txt` itself states a second grounded amount or branch inside the same row.
 - In `.rac.test` for a one-row fixed-amount slice, use boolean or fact-shaped helper inputs that mirror the row text.
 - Do not invent sample ages like `2`, `3`, `24`, or `25` just to witness a row condition; if the row says "aged under 25", prefer a helper like `claimant_aged_under_25`.
 - For a one-row fixed-amount slice with a single canonical subject, keep `.rac.test` outputs scalar instead of nested wrappers like `{person: 1, value: ...}`.
 - For a one-row fixed-amount slice, every `.rac.test` case should keep the row-defining conditions satisfied; do not negate them in alternate tests unless `./source.txt` states another grounded amount for that alternate branch.
+- For a one-row fixed-amount slice, the allowed `.rac.test` shapes are base case, effective-date boundary, and later same-amount case. Do not include `alternate_branch_*` tests unless `./source.txt` states a second grounded amount.
+- Do not use thousands separators in RAC numeric literals or `.rac.test` outputs; write `2500`, not `2,500`.
 """
     target_hint_guidance = ""
     if policyengine_rac_var_hint:

@@ -1071,6 +1071,9 @@ class TestEvalPrompt:
         assert "Do not invent sample ages like `2`, `3`, `24`, or `25`" in prompt
         assert "keep `.rac.test` outputs scalar" in prompt
         assert "keep the row-defining conditions satisfied" in prompt
+        assert "principal amount variable should usually be a grounded constant" in prompt
+        assert "Do not include `alternate_branch_*` tests" in prompt
+        assert "write `2500`, not `2,500`" in prompt
 
     def test_build_eval_prompt_includes_import_vs_local_helper_protocol(
         self, tmp_path

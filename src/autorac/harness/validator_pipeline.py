@@ -1947,6 +1947,12 @@ print("BENCHMARK:" + json.dumps(result))
                 ):
                     return normalized_items[0]
                 return normalized_items
+            if isinstance(value, str):
+                compact = value.replace(",", "").strip()
+                if re.fullmatch(r"-?\d+", compact):
+                    return int(compact)
+                if re.fullmatch(r"-?\d+\.\d+", compact):
+                    return float(compact)
             return value
 
         def unwrap_entity_wrapper(value: Any) -> Any:
