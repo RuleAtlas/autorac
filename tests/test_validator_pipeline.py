@@ -3339,6 +3339,24 @@ class TestResolvePeVariable:
             == "WTC_couple_element"
         )
 
+    def test_resolves_uk_wtc_worker_element_amount(self, pipeline):
+        assert (
+            pipeline._resolve_pe_variable("uk", "wtc_worker_element_amount")
+            == "WTC_worker_element"
+        )
+
+    def test_resolves_uk_wtc_disabled_element_amount(self, pipeline):
+        assert (
+            pipeline._resolve_pe_variable("uk", "wtc_disabled_element_amount")
+            == "WTC_disabled_element"
+        )
+
+    def test_resolves_uk_wtc_severely_disabled_element_amount(self, pipeline):
+        assert (
+            pipeline._resolve_pe_variable("uk", "wtc_severely_disabled_element_amount")
+            == "WTC_severely_disabled_element"
+        )
+
 
 class TestDetectPolicyengineCountry:
     def test_detects_uk_from_embedded_source(self, pipeline, temp_dirs):
@@ -3410,6 +3428,53 @@ class TestBuildPeUkAdditionalScenarios:
         assert "'working_tax_credit_reported': {'2025': 1}" in script
         assert "'weekly_hours': {'2025': 16}" in script
         assert "'child': {'age': {'2025': 10}}" in script
+
+    def test_uk_wtc_worker_element_script_builds_30_hour_case(self, pipeline):
+        script = pipeline._build_pe_scenario_script(
+            "WTC_worker_element",
+            {"period": "2025-04-06"},
+            "2025",
+            830.0,
+            country="uk",
+            rac_var="wtc_worker_element_amount",
+        )
+
+        assert "sim.calculate('WTC_worker_element', int('2025'))" in script
+        assert "'working_tax_credit_reported': {'2025': 1}" in script
+        assert "'weekly_hours': {'2025': 30}" in script
+        assert "'members': ['adult']" in script
+
+    def test_uk_wtc_disabled_element_script_builds_disabled_case(self, pipeline):
+        script = pipeline._build_pe_scenario_script(
+            "WTC_disabled_element",
+            {"period": "2025-04-06"},
+            "2025",
+            4001.0,
+            country="uk",
+            rac_var="wtc_disabled_element_amount",
+        )
+
+        assert "sim.calculate('WTC_disabled_element', int('2025'))" in script
+        assert "'working_tax_credit_reported': {'2025': 1}" in script
+        assert "'weekly_hours': {'2025': 30}" in script
+        assert "'is_disabled_for_benefits': {'2025': True}" in script
+
+    def test_uk_wtc_severely_disabled_element_script_builds_severe_case(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "WTC_severely_disabled_element",
+            {"period": "2025-04-06"},
+            "2025",
+            1734.0,
+            country="uk",
+            rac_var="wtc_severely_disabled_element_amount",
+        )
+
+        assert "sim.calculate('WTC_severely_disabled_element', int('2025'))" in script
+        assert "'working_tax_credit_reported': {'2025': 1}" in script
+        assert "'is_disabled_for_benefits': {'2025': True}" in script
+        assert "'is_severely_disabled_for_benefits': {'2025': True}" in script
 
     def test_detects_us_by_default(self, pipeline, temp_dirs):
         rac_us, _ = temp_dirs

@@ -2202,6 +2202,13 @@ print("BENCHMARK:" + json.dumps(result))
                 "wtc_lone_parent_element_amount": "WTC_lone_parent_element",
                 "wtc_couple_element_amount": "WTC_couple_element",
                 "wtc_second_adult_element_amount": "WTC_couple_element",
+                "wtc_worker_element_amount": "WTC_worker_element",
+                "working_tax_credit_worker_element_amount": "WTC_worker_element",
+                "working_tax_credit_30_hours_element_amount": "WTC_worker_element",
+                "wtc_disabled_element_amount": "WTC_disabled_element",
+                "working_tax_credit_disabled_element_amount": "WTC_disabled_element",
+                "wtc_severely_disabled_element_amount": "WTC_severely_disabled_element",
+                "working_tax_credit_severely_disabled_element_amount": "WTC_severely_disabled_element",
             }
 
         return {
@@ -2438,6 +2445,35 @@ print("BENCHMARK:" + json.dumps(result))
         )
 
     @staticmethod
+    def _is_uk_wtc_worker_element_var(rac_var: str) -> bool:
+        rac_var_lower = rac_var.lower()
+        return (
+            "wtc_worker" in rac_var_lower
+            or "working_tax_credit_worker_element" in rac_var_lower
+            or "30_hour" in rac_var_lower
+            or "30_hours" in rac_var_lower
+            or "thirty_hour" in rac_var_lower
+        )
+
+    @staticmethod
+    def _is_uk_wtc_disabled_element_var(rac_var: str) -> bool:
+        rac_var_lower = rac_var.lower()
+        return (
+            "wtc_disabled" in rac_var_lower
+            or "working_tax_credit_disabled_element" in rac_var_lower
+        ) and "severe" not in rac_var_lower
+
+    @staticmethod
+    def _is_uk_wtc_severely_disabled_element_var(rac_var: str) -> bool:
+        rac_var_lower = rac_var.lower()
+        return (
+            "wtc_severely_disabled" in rac_var_lower
+            or "working_tax_credit_severely_disabled_element" in rac_var_lower
+            or "working_tax_credit_severe_disability_element" in rac_var_lower
+            or "wtc_severe_disability" in rac_var_lower
+        )
+
+    @staticmethod
     def _is_uk_table_row_amount_var(rac_var: str) -> bool:
         rac_var_lower = rac_var.lower()
         return any(
@@ -2450,6 +2486,9 @@ print("BENCHMARK:" + json.dumps(result))
                 ValidatorPipeline._is_uk_wtc_basic_element_var,
                 ValidatorPipeline._is_uk_wtc_lone_parent_element_var,
                 ValidatorPipeline._is_uk_wtc_couple_element_var,
+                ValidatorPipeline._is_uk_wtc_worker_element_var,
+                ValidatorPipeline._is_uk_wtc_disabled_element_var,
+                ValidatorPipeline._is_uk_wtc_severely_disabled_element_var,
             )
         )
 
@@ -2639,6 +2678,14 @@ print("BENCHMARK:" + json.dumps(result))
             return "WTC_lone_parent_element"
         if country == "uk" and self._is_uk_wtc_couple_element_var(rac_var_lower):
             return "WTC_couple_element"
+        if country == "uk" and self._is_uk_wtc_worker_element_var(rac_var_lower):
+            return "WTC_worker_element"
+        if country == "uk" and self._is_uk_wtc_disabled_element_var(rac_var_lower):
+            return "WTC_disabled_element"
+        if country == "uk" and self._is_uk_wtc_severely_disabled_element_var(
+            rac_var_lower
+        ):
+            return "WTC_severely_disabled_element"
         if country == "uk" and self._is_uk_scottish_child_payment_rate_var(
             rac_var_lower
         ):
@@ -2937,10 +2984,20 @@ val = float(annual[target_index]) / 12
 print(f'RESULT:{{val}}')
 """
 
-        if pe_var in {"WTC_basic_element", "WTC_lone_parent_element", "WTC_couple_element"} and (
+        if pe_var in {
+            "WTC_basic_element",
+            "WTC_lone_parent_element",
+            "WTC_couple_element",
+            "WTC_worker_element",
+            "WTC_disabled_element",
+            "WTC_severely_disabled_element",
+        } and (
             self._is_uk_wtc_basic_element_var(rac_var_lower)
             or self._is_uk_wtc_lone_parent_element_var(rac_var_lower)
             or self._is_uk_wtc_couple_element_var(rac_var_lower)
+            or self._is_uk_wtc_worker_element_var(rac_var_lower)
+            or self._is_uk_wtc_disabled_element_var(rac_var_lower)
+            or self._is_uk_wtc_severely_disabled_element_var(rac_var_lower)
         ):
             if pe_var == "WTC_lone_parent_element":
                 people = (
@@ -2956,6 +3013,18 @@ print(f'RESULT:{{val}}')
                 )
                 benunit_members = "['adult', 'spouse']"
                 household_members = "['adult', 'spouse']"
+            elif pe_var == "WTC_disabled_element":
+                people = (
+                    f"{{'adult': {{'age': {{{year_key}: 30}}, 'weekly_hours': {{{year_key}: 30}}, 'working_tax_credit_reported': {{{year_key}: 1}}, 'is_disabled_for_benefits': {{{year_key}: True}}}}}}"
+                )
+                benunit_members = "['adult']"
+                household_members = "['adult']"
+            elif pe_var == "WTC_severely_disabled_element":
+                people = (
+                    f"{{'adult': {{'age': {{{year_key}: 30}}, 'weekly_hours': {{{year_key}: 30}}, 'working_tax_credit_reported': {{{year_key}: 1}}, 'is_disabled_for_benefits': {{{year_key}: True}}, 'is_severely_disabled_for_benefits': {{{year_key}: True}}}}}}"
+                )
+                benunit_members = "['adult']"
+                household_members = "['adult']"
             else:
                 people = (
                     f"{{'adult': {{'age': {{{year_key}: 30}}, 'weekly_hours': {{{year_key}: 30}}, 'working_tax_credit_reported': {{{year_key}: 1}}}}}}"
