@@ -2234,6 +2234,23 @@ class TestBuildPeScenarioScript:
         assert "if scenario_is_couple:" in script
         assert "val = 0.0" in script
 
+    def test_uk_scottish_child_payment_leaf_script_builds_scotland_uc_scenario(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "scottish_child_payment",
+            {"period": "2025-04-01"},
+            "2025",
+            27.15,
+            country="uk",
+            rac_var="scottish_child_payment_weekly_rate",
+        )
+        assert "from policyengine_uk import Simulation" in script
+        assert "'country': {2025: 'SCOTLAND'}" in script
+        assert "'universal_credit': {2025: 1.0}" in script
+        assert "annual = sim.calculate('scottish_child_payment', int('2025'))" in script
+        assert "val = float(annual[0]) / 52" in script
+
 
 class TestIsPeTestMappable:
     def test_uk_child_benefit_paragraph_exception_true_is_unmappable(self, pipeline):
@@ -2308,6 +2325,16 @@ class TestIsPeTestMappable:
         assert mappable is False
         assert "does not represent directly" in reason
 
+    def test_uk_scottish_child_payment_helper_boolean_is_unmappable(self, pipeline):
+        mappable, reason = pipeline._is_pe_test_mappable(
+            "uk",
+            "scottish_child_payment_rate_applies",
+            {},
+        )
+
+        assert mappable is False
+        assert "helper boolean" in reason.lower()
+
 
 class TestResolvePeVariable:
     def test_resolves_uk_child_benefit_enhanced_rate_family_by_substring(self, pipeline):
@@ -2362,6 +2389,12 @@ class TestResolvePeVariable:
         assert (
             pipeline._resolve_pe_variable("uk", "standard_minimum_guarantee_single_weekly_rate")
             == "standard_minimum_guarantee"
+        )
+
+    def test_resolves_uk_scottish_child_payment_weekly_rate(self, pipeline):
+        assert (
+            pipeline._resolve_pe_variable("uk", "scottish_child_payment_weekly_rate")
+            == "scottish_child_payment"
         )
 
 

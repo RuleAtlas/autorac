@@ -2001,6 +2001,9 @@ print("BENCHMARK:" + json.dumps(result))
                 "child_benefit_reg2_1_b": "child_benefit_respective_amount",
                 "standard_minimum_guarantee_couple_weekly_rate": "standard_minimum_guarantee",
                 "standard_minimum_guarantee_single_weekly_rate": "standard_minimum_guarantee",
+                "scottish_child_payment_weekly_rate": "scottish_child_payment",
+                "scottish_child_payment_weekly_amount": "scottish_child_payment",
+                "scottish_child_payment_regulation_20_1_amount": "scottish_child_payment",
             }
 
         return {
@@ -2094,6 +2097,21 @@ print("BENCHMARK:" + json.dumps(result))
             for marker in ("single", "no_partner", "without_partner")
         )
 
+    @staticmethod
+    def _is_uk_scottish_child_payment_rate_var(rac_var: str) -> bool:
+        rac_var_lower = rac_var.lower()
+        if "scottish_child_payment" not in rac_var_lower:
+            return False
+        if any(
+            marker in rac_var_lower
+            for marker in ("_applies", "eligible", "would_claim", "qualifying")
+        ):
+            return False
+        return any(
+            marker in rac_var_lower
+            for marker in ("amount", "rate", "weekly", "regulation_20_1", "reg20_1")
+        )
+
     # PE variables that are defined as monthly (not annual)
     _PE_MONTHLY_VARS = {
         "snap",
@@ -2166,6 +2184,15 @@ print("BENCHMARK:" + json.dumps(result))
                         False,
                         "RAC test uses downstream regulation exceptions that PolicyEngine UK does not represent directly",
                     )
+        if (
+            country == "uk"
+            and "scottish_child_payment" in rac_var_lower
+            and rac_var_lower.endswith("_applies")
+        ):
+            return (
+                False,
+                "RAC helper boolean does not have a direct PolicyEngine UK analogue",
+            )
         return True, None
 
     def _resolve_pe_variable(self, country: str, rac_var: str) -> str | None:
@@ -2181,6 +2208,10 @@ print("BENCHMARK:" + json.dumps(result))
             rac_var_lower
         ):
             return "standard_minimum_guarantee"
+        if country == "uk" and self._is_uk_scottish_child_payment_rate_var(
+            rac_var_lower
+        ):
+            return "scottish_child_payment"
 
         return None
 
@@ -2412,6 +2443,74 @@ annual = sim.calculate('{pe_var}', int('{year}'))
 weekly = float(annual[0]) / 52
 scenario_is_couple = {scenario_is_couple}
 {result_logic.rstrip()}
+print(f'RESULT:{{val}}')
+"""
+
+        if pe_var == "scottish_child_payment" and self._is_uk_scottish_child_payment_rate_var(
+            rac_var_lower
+        ):
+            in_scotland = next(
+                (
+                    bool(value)
+                    for key, value in lowered.items()
+                    if "scotland" in str(key).lower() and value is not None
+                ),
+                True,
+            )
+            would_claim = next(
+                (
+                    bool(value)
+                    for key, value in lowered.items()
+                    if (
+                        "would_claim_scp" in str(key).lower()
+                        or "claim_scp" in str(key).lower()
+                        or "payable" in str(key).lower()
+                    )
+                    and value is not None
+                ),
+                True,
+            )
+            eligible_child = next(
+                (
+                    bool(value)
+                    for key, value in lowered.items()
+                    if (
+                        "eligible_child" in str(key).lower()
+                        or "is_child" in str(key).lower()
+                    )
+                    and value is not None
+                ),
+                True,
+            )
+            child_age = 10 if eligible_child else 17
+            qualifying_benefit_amount = next(
+                (
+                    float(value)
+                    for key, value in lowered.items()
+                    if "universal_credit" in str(key).lower() and value is not None
+                ),
+                1.0,
+            )
+            if any(
+                ("qualifying_benefit" in str(key).lower()) and not bool(value)
+                for key, value in lowered.items()
+            ):
+                qualifying_benefit_amount = 0.0
+
+            country_value = "SCOTLAND" if in_scotland else "ENGLAND"
+
+            return f"""
+from policyengine_uk import Simulation
+
+situation = {{
+    'people': {{'child': {{'age': {{{year}: {child_age}}}, 'would_claim_scp': {{{year}: {would_claim}}}}}}},
+    'benunits': {{'benunit': {{'members': ['child'], 'universal_credit': {{{year}: {qualifying_benefit_amount}}}}}}},
+    'households': {{'household': {{'members': ['child'], 'country': {{{year}: '{country_value}'}}}}}},
+}}
+
+sim = Simulation(situation=situation)
+annual = sim.calculate('scottish_child_payment', int('{year}'))
+val = float(annual[0]) / 52
 print(f'RESULT:{{val}}')
 """
 
