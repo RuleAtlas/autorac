@@ -1842,7 +1842,40 @@ print("BENCHMARK:" + json.dumps(result))
             clean_content = "\n".join(content_lines)
             parsed = yaml.safe_load(clean_content)
 
+            def append_top_level_io_tests(test_cases: Any) -> None:
+                if not isinstance(test_cases, list):
+                    return
+                for test_case in test_cases:
+                    if not isinstance(test_case, dict):
+                        continue
+                    outputs = test_case.get("output")
+                    if not isinstance(outputs, dict):
+                        continue
+                    inputs = test_case.get("input", test_case.get("inputs", {}))
+                    inputs = unwrap_entity_wrapper(inputs)
+                    outputs = unwrap_entity_wrapper(outputs)
+                    normalized_inputs = (
+                        {
+                            key: normalize_test_value(value)
+                            for key, value in inputs.items()
+                        }
+                        if isinstance(inputs, dict)
+                        else inputs or {}
+                    )
+                    for variable, expected in outputs.items():
+                        tests.append(
+                            {
+                                "variable": variable,
+                                "name": test_case.get("name"),
+                                "period": test_case.get("period"),
+                                "inputs": normalized_inputs,
+                                "expect": normalize_test_value(expected),
+                            }
+                        )
+
             if isinstance(parsed, dict):
+                if "tests" in parsed:
+                    append_top_level_io_tests(parsed.get("tests"))
                 for key, value in parsed.items():
                     # Skip non-test keys (status, imports, entity, etc.)
                     if key in (
@@ -1892,33 +1925,7 @@ print("BENCHMARK:" + json.dumps(result))
                                 normalized_case["variable"] = key
                                 tests.append(normalized_case)
             elif isinstance(parsed, list):
-                for test_case in parsed:
-                    if not isinstance(test_case, dict):
-                        continue
-                    outputs = test_case.get("output")
-                    if not isinstance(outputs, dict):
-                        continue
-                    inputs = test_case.get("input", test_case.get("inputs", {}))
-                    inputs = unwrap_entity_wrapper(inputs)
-                    outputs = unwrap_entity_wrapper(outputs)
-                    normalized_inputs = (
-                        {
-                            key: normalize_test_value(value)
-                            for key, value in inputs.items()
-                        }
-                        if isinstance(inputs, dict)
-                        else inputs or {}
-                    )
-                    for variable, expected in outputs.items():
-                        tests.append(
-                            {
-                                "variable": variable,
-                                "name": test_case.get("name"),
-                                "period": test_case.get("period"),
-                                "inputs": normalized_inputs,
-                                "expect": normalize_test_value(expected),
-                            }
-                        )
+                append_top_level_io_tests(parsed)
         except Exception:
             pass
 

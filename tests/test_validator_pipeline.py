@@ -238,6 +238,25 @@ class TestExtractTestsFromRacV2ListFormat:
         assert tests[0]["inputs"]["number_of_children"] == 3
         assert tests[0]["expect"] == 26.05
 
+    def test_supports_top_level_tests_with_input_output_format(self, pipeline):
+        content = """
+tests:
+  - name: top_level_case
+    period: 2025-04-07
+    input:
+      family:
+        child_benefit_eldest_child: true
+    output:
+      family:
+        child_benefit_enhanced_rate: 26.05
+"""
+        tests = pipeline._extract_tests_from_rac_v2(content)
+
+        assert len(tests) == 1
+        assert tests[0]["variable"] == "child_benefit_enhanced_rate"
+        assert tests[0]["inputs"]["child_benefit_eldest_child"] is True
+        assert tests[0]["expect"] == 26.05
+
 
 # =========================================================================
 # Prompt constants
