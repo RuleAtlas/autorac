@@ -233,6 +233,7 @@ class TestGeneratedBundleCleaning:
             "    uc_claimant_is_single: true\n"
             "    uc_claimant_aged_25_or_over: true\n"
             "  output:\n"
+            "    joint_claimants_where_either_is_aged_25_or_over: true\n"
             "    uc_standard_allowance_single_claimant_aged_25_or_over: 400.14\n"
             "- name: alternate_real_condition_single_status_varied\n"
             "  period: 2025-04\n"
@@ -255,6 +256,7 @@ class TestGeneratedBundleCleaning:
         assert "if uc_claimant_is_single" not in rac_text
         test_text = output_file.with_suffix(".rac.test").read_text()
         assert "alternate_real_condition_single_status_varied" not in test_text
+        assert "joint_claimants_where_either_is_aged_25_or_over" not in test_text
 
     def test_can_include_policyengine_metrics_for_uk_artifact(self, tmp_path):
         rac_file = tmp_path / "source" / "uksi-2006-965-regulation-2.rac"

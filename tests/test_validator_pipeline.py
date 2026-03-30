@@ -3018,6 +3018,22 @@ class TestIsPeTestMappable:
         assert mappable is False
         assert "take-up" in reason.lower()
 
+    def test_uk_child_benefit_non_child_or_qyp_subject_is_unmappable(
+        self, pipeline
+    ):
+        mappable, reason = pipeline._is_pe_test_mappable(
+            "uk",
+            "child_benefit_other_child_weekly_rate",
+            {
+                "child_benefit_subject_person_is_child": False,
+                "child_benefit_subject_person_is_qualifying_young_person": False,
+            },
+            0,
+        )
+
+        assert mappable is False
+        assert "qualifying-young-person subject status" in reason
+
     def test_uk_child_benefit_helper_boolean_is_unmappable(self, pipeline):
         mappable, reason = pipeline._is_pe_test_mappable(
             "uk",

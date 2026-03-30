@@ -2502,9 +2502,24 @@ def _normalize_single_amount_row_test_content(content: str) -> str:
             return True
         return "alternate" not in case_name.lower()
 
+    def normalize_case(case: object) -> object:
+        if not isinstance(case, dict):
+            return case
+        normalized_case = dict(case)
+        output = normalized_case.get("output")
+        if isinstance(output, dict) and len(output) > 1:
+            numeric_output = {
+                key: value
+                for key, value in output.items()
+                if value is None or (isinstance(value, (int, float)) and not isinstance(value, bool))
+            }
+            if numeric_output:
+                normalized_case["output"] = numeric_output
+        return normalized_case
+
     if isinstance(payload, list):
         filtered = [
-            case
+            normalize_case(case)
             for case in payload
             if not isinstance(case, dict) or should_keep(case.get("name"))
         ]
@@ -2513,7 +2528,7 @@ def _normalize_single_amount_row_test_content(content: str) -> str:
     if isinstance(payload, dict):
         if isinstance(payload.get("tests"), list):
             payload["tests"] = [
-                case
+                normalize_case(case)
                 for case in payload["tests"]
                 if not isinstance(case, dict) or should_keep(case.get("name"))
             ]
@@ -2523,7 +2538,7 @@ def _normalize_single_amount_row_test_content(content: str) -> str:
         for key, value in payload.items():
             case_name = key if isinstance(key, str) else None
             if should_keep(case_name):
-                filtered_items[key] = value
+                filtered_items[key] = normalize_case(value)
         return yaml.safe_dump(filtered_items, sort_keys=False).strip() + "\n"
 
     return normalized

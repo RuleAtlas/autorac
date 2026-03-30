@@ -2514,6 +2514,22 @@ print("BENCHMARK:" + json.dumps(result))
                         False,
                         "RAC test encodes take-up/payability conditions that PolicyEngine UK's statutory rate variable does not represent directly",
                     )
+            explicit_false_keys = {
+                str(key).lower()
+                for key, value in inputs.items()
+                if value is not None and not bool(value)
+            }
+            if (
+                "is_child_or_qualifying_young_person" in explicit_false_keys
+                or (
+                    any("is_child" in key for key in explicit_false_keys)
+                    and any("qualifying_young_person" in key for key in explicit_false_keys)
+                )
+            ):
+                return (
+                    False,
+                    "RAC test negates child-or-qualifying-young-person subject status that PolicyEngine UK's statutory child benefit rate does not expose as a separate comparable branch",
+                )
         if country == "uk" and self._is_uk_child_benefit_rate_var(
             rac_var_lower
         ) and rac_var_lower.endswith("_applies"):
