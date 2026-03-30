@@ -292,6 +292,83 @@ class TestAknSectionEval:
         assert "0 | 165" in text
         assert "G. Pregnancy allowance text." in text
 
+    def test_extract_akn_section_text_can_target_specific_table_row(self, tmp_path):
+        akn_file = tmp_path / "doc.xml"
+        akn_file.write_text(
+            """
+<akomaNtoso xmlns="http://docs.oasis-open.org/legaldocml/ns/akn/3.0">
+  <act>
+    <body>
+      <hcontainer eId="regulation-36">
+        <num>36.</num>
+        <heading>Table showing amounts of elements</heading>
+        <paragraph eId="regulation-36-3">
+          <num>(3)</num>
+          <content>
+            <p>In the case of an award where the claimant is a member of a couple, but claims as a single person, the amounts are those shown in the table for a single claimant.</p>
+            <table>
+              <tr><td>Element</td><td>Amount for each assessment period</td></tr>
+              <tr><td>Standard allowance</td><td></td></tr>
+              <tr><td>single claimant aged under 25</td><td>£316.98</td></tr>
+              <tr><td>single claimant aged 25 or over</td><td>£400.14</td></tr>
+            </table>
+          </content>
+        </paragraph>
+      </hcontainer>
+    </body>
+  </act>
+</akomaNtoso>
+            """.strip()
+        )
+
+        text = extract_akn_section_text(
+            akn_file,
+            "regulation-36-3",
+            table_row_query="single claimant aged under 25",
+        )
+
+        assert "36. Table showing amounts of elements" in text
+        assert "(3)" in text
+        assert "Standard allowance" in text
+        assert "single claimant aged under 25 | £316.98" in text
+        assert "single claimant aged 25 or over" not in text
+
+    def test_extract_akn_section_text_matches_table_row_query_despite_inline_spacing_edits(
+        self, tmp_path
+    ):
+        akn_file = tmp_path / "doc.xml"
+        akn_file.write_text(
+            """
+<akomaNtoso xmlns="http://docs.oasis-open.org/legaldocml/ns/akn/3.0">
+  <act>
+    <body>
+      <paragraph eId="regulation-36-3">
+        <num>(3)</num>
+        <content>
+          <table>
+            <tr><td>Element</td><td>Amount</td></tr>
+            <tr><td>Child element—</td><td></td></tr>
+            <tr><td>second and each subsequenteach child or qualifying young person</td><td>£292.81</td></tr>
+          </table>
+        </content>
+      </paragraph>
+    </body>
+  </act>
+</akomaNtoso>
+            """.strip()
+        )
+
+        text = extract_akn_section_text(
+            akn_file,
+            "regulation-36-3",
+            table_row_query="second and each subsequent each child or qualifying young person",
+        )
+
+        assert "second and each subsequenteach child or qualifying young person | £292.81" in text
+        assert "Child element—" in text
+        assert "Element | Amount" in text
+        assert "single claimant aged under 25" not in text
+
     def test_extract_akn_section_text_includes_editorial_effective_date(self, tmp_path):
         akn_file = tmp_path / "doc.xml"
         akn_file.write_text(
@@ -1039,6 +1116,26 @@ cases:
         assert manifest.cases[0].source_ref == "/uksi/2006/965/regulation/2/2025-04-07"
         assert manifest.cases[0].section_eid == "regulation-2-1-a"
 
+    def test_load_eval_suite_manifest_supports_table_row_query(self, tmp_path):
+        manifest_file = tmp_path / "uk-expanded.yaml"
+        manifest_file.write_text(
+            """
+name: UK expanded
+runners:
+  - openai:gpt-5.4
+cases:
+  - kind: uk_legislation
+    name: uc-standard-allowance-single-young
+    source_ref: /uksi/2013/376/regulation/36/2025-04-01
+    section_eid: regulation-36-3
+    table_row_query: single claimant aged under 25
+            """.strip()
+        )
+
+        manifest = load_eval_suite_manifest(manifest_file)
+
+        assert manifest.cases[0].table_row_query == "single claimant aged under 25"
+
     def test_run_eval_suite_dispatches_to_matching_case_runner(self, tmp_path):
         manifest_file = tmp_path / "suite.yaml"
         manifest_file.write_text(
@@ -1080,6 +1177,38 @@ cases:
         assert results == [uk_result, source_result]
         mock_uk.assert_called_once()
         mock_source.assert_called_once()
+
+    def test_run_eval_suite_passes_table_row_query_to_uk_runner(self, tmp_path):
+        manifest_file = tmp_path / "suite.yaml"
+        manifest_file.write_text(
+            """
+name: UK row suite
+runners:
+  - openai:gpt-5.4
+cases:
+  - kind: uk_legislation
+    name: uc-standard-allowance-single-young
+    source_ref: /uksi/2013/376/regulation/36/2025-04-01
+    section_eid: regulation-36-3
+    table_row_query: single claimant aged under 25
+            """.strip()
+        )
+        manifest = load_eval_suite_manifest(manifest_file)
+        uk_result = _fake_eval_result("openai-gpt-5.4", "uc-standard-allowance-single-young")
+
+        with patch(
+            "autorac.harness.evals.run_legislation_gov_uk_section_eval",
+            return_value=[uk_result],
+        ) as mock_uk:
+            results = run_eval_suite(
+                manifest=manifest,
+                output_root=tmp_path / "out",
+                rac_path=tmp_path / "rac",
+                atlas_path=None,
+            )
+
+        assert results == [uk_result]
+        assert mock_uk.call_args.kwargs["table_row_query"] == "single claimant aged under 25"
 
     def test_run_eval_suite_records_case_failure_and_continues(self, tmp_path):
         manifest_file = tmp_path / "suite.yaml"

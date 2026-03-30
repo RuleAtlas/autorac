@@ -210,6 +210,7 @@ class EvalSuiteCase:
     source_file: Path | None = None
     akn_file: Path | None = None
     section_eid: str | None = None
+    table_row_query: str | None = None
     source_ref: str | None = None
     oracle: EvalOracleMode = "none"
     policyengine_country: str = "auto"
@@ -528,25 +529,92 @@ def _akn_ancestor_titles(root: ET.Element, section: ET.Element) -> list[str]:
     return titles
 
 
-def _append_akn_content_block_text(parent: ET.Element, parts: list[str]) -> None:
+def _table_rows_from_element(table: ET.Element) -> list[list[str]]:
+    """Extract normalized cell text from an AKN or XHTML table."""
+    rows: list[list[str]] = []
+    for row in table.iter():
+        if _akn_local_tag(row) != "tr":
+            continue
+        cells = [
+            _collapse_whitespace("".join(cell.itertext()))
+            for cell in list(row)
+            if _akn_local_tag(cell) in {"td", "th"}
+        ]
+        if any(cells):
+            rows.append(cells)
+    return rows
+
+
+def _table_row_has_amount(row: list[str]) -> bool:
+    """Return True when a row looks like a value-bearing table row."""
+    if not row:
+        return False
+    return bool(re.search(r"\d", row[-1]))
+
+
+def _normalize_table_match_text(value: str) -> str:
+    """Normalize table text for resilient row-query matching."""
+    return re.sub(r"\W+", "", _collapse_whitespace(value).lower())
+
+
+def _select_table_rows(
+    rows: list[list[str]],
+    table_row_query: str | None = None,
+) -> list[list[str]]:
+    """Filter table rows to one matched row plus nearby grouping context."""
+    if not table_row_query:
+        return rows
+
+    query = _normalize_table_match_text(table_row_query)
+    if not query:
+        return rows
+
+    matched_indexes = [
+        index
+        for index, row in enumerate(rows)
+        if query in _normalize_table_match_text(" | ".join(row))
+    ]
+    if not matched_indexes:
+        return rows
+
+    selected_indexes: set[int] = {0} if rows else set()
+    for index in matched_indexes:
+        selected_indexes.add(index)
+        context_index = index - 1
+        while context_index > 0 and not _table_row_has_amount(rows[context_index]):
+            selected_indexes.add(context_index)
+            context_index -= 1
+
+    return [rows[index] for index in sorted(selected_indexes)]
+
+
+def _append_akn_content_block_text(
+    parent: ET.Element,
+    parts: list[str],
+    table_row_query: str | None = None,
+) -> None:
     for child in list(parent):
         local_tag = _akn_local_tag(child)
         if local_tag == "p":
             paragraph = _collapse_whitespace("".join(child.itertext()))
             if paragraph:
                 parts.append(paragraph)
-        elif local_tag == "table":
-            rows: list[str] = []
-            for row in child.findall("akn:tr", AKN_NS):
-                cells = [
-                    _collapse_whitespace("".join(cell.itertext()))
-                    for cell in list(row)
-                    if _collapse_whitespace("".join(cell.itertext()))
-                ]
-                if cells:
-                    rows.append(" | ".join(cells))
-            if rows:
-                parts.append("Structured table:\n" + "\n".join(rows))
+            continue
+
+        tables = [node for node in child.iter() if _akn_local_tag(node) == "table"]
+        if local_tag == "table" and child not in tables:
+            tables.insert(0, child)
+        if not tables:
+            continue
+
+        for table in tables:
+            selected_rows = _select_table_rows(
+                _table_rows_from_element(table),
+                table_row_query=table_row_query,
+            )
+            formatted_rows = [" | ".join(cell for cell in row if cell) for row in selected_rows]
+            if formatted_rows:
+                parts.append("Structured table:\n" + "\n".join(formatted_rows))
 
 
 def _akn_ancestor_intro_text(root: ET.Element, section: ET.Element) -> list[str]:
@@ -609,7 +677,11 @@ def _resolve_akn_section_eid(
     )
 
 
-def extract_akn_section_text(akn_file: Path, section_eid: str) -> str:
+def extract_akn_section_text(
+    akn_file: Path,
+    section_eid: str,
+    table_row_query: str | None = None,
+) -> str:
     """Extract one Akoma Ntoso section as plain source text for evals."""
     tree = ET.parse(akn_file)
     root = tree.getroot()
@@ -634,7 +706,11 @@ def extract_akn_section_text(akn_file: Path, section_eid: str) -> str:
     for tag in ("intro", "content", "wrapUp"):
         node = section.find(f"akn:{tag}", AKN_NS)
         if node is not None:
-            _append_akn_content_block_text(node, parts)
+            _append_akn_content_block_text(
+                node,
+                parts,
+                table_row_query=table_row_query,
+            )
 
     return "\n\n".join(parts).strip()
 
@@ -649,6 +725,7 @@ def run_akn_section_eval(
     mode: EvalMode = "repo-augmented",
     extra_context_paths: list[Path] | None = None,
     allow_parent: bool = False,
+    table_row_query: str | None = None,
     oracle: EvalOracleMode = "none",
     policyengine_country: str = "auto",
 ) -> list[EvalResult]:
@@ -660,7 +737,11 @@ def run_akn_section_eval(
     )
     return run_source_eval(
         source_id=source_id,
-        source_text=extract_akn_section_text(akn_file, resolved_section_eid),
+        source_text=extract_akn_section_text(
+            akn_file,
+            resolved_section_eid,
+            table_row_query=table_row_query,
+        ),
         runner_specs=runner_specs,
         output_root=output_root,
         rac_path=rac_path,
@@ -680,6 +761,7 @@ def run_legislation_gov_uk_section_eval(
     extra_context_paths: list[Path] | None = None,
     section_eid: str | None = None,
     allow_parent: bool = False,
+    table_row_query: str | None = None,
 ) -> list[EvalResult]:
     """Fetch official UK legislation XML and run an AKN section eval."""
     fetched = _fetch_legislation_gov_uk_document(source_ref, output_root)
@@ -694,6 +776,7 @@ def run_legislation_gov_uk_section_eval(
         mode=mode,
         extra_context_paths=extra_context_paths,
         allow_parent=allow_parent,
+        table_row_query=table_row_query,
         oracle="policyengine",
         policyengine_country="uk",
     )
@@ -778,6 +861,11 @@ def load_eval_suite_manifest(path: Path) -> EvalSuiteManifest:
                 else None
             ),
             section_eid=item.get("section_eid"),
+            table_row_query=(
+                str(item.get("table_row_query")).strip()
+                if item.get("table_row_query") is not None
+                else None
+            ),
             source_ref=item.get("source_ref"),
             oracle=str(item.get("oracle", "none")),
             policyengine_country=str(item.get("policyengine_country", "auto")),
@@ -849,6 +937,7 @@ def run_eval_suite(
                     mode=case.mode,
                     extra_context_paths=extra_context,
                     allow_parent=case.allow_parent,
+                    table_row_query=case.table_row_query,
                     oracle=case.oracle,
                     policyengine_country=case.policyengine_country,
                 )
@@ -862,6 +951,7 @@ def run_eval_suite(
                     mode=case.mode,
                     extra_context_paths=extra_context,
                     allow_parent=case.allow_parent,
+                    table_row_query=case.table_row_query,
                 )
         except Exception as exc:
             case_results = _suite_case_failure_results(case, parsed_runners, exc)

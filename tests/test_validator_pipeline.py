@@ -3054,6 +3054,58 @@ class TestResolvePeVariable:
             == "benefit_cap"
         )
 
+    def test_resolves_uk_uc_standard_allowance_single_young(self, pipeline):
+        assert (
+            pipeline._resolve_pe_variable(
+                "uk", "uc_standard_allowance_single_claimant_aged_under_25"
+            )
+            == "uc_standard_allowance"
+        )
+
+    def test_resolves_uk_uc_carer_element_amount(self, pipeline):
+        assert (
+            pipeline._resolve_pe_variable("uk", "uc_carer_element_amount")
+            == "uc_carer_element"
+        )
+
+    def test_resolves_uk_uc_child_element_first_child_higher_amount(self, pipeline):
+        assert (
+            pipeline._resolve_pe_variable(
+                "uk", "uc_child_element_first_child_higher_amount"
+            )
+            == "uc_individual_child_element"
+        )
+
+    def test_resolves_uk_uc_lcwra_element_amount(self, pipeline):
+        assert (
+            pipeline._resolve_pe_variable("uk", "uc_lcwra_element_amount")
+            == "uc_LCWRA_element"
+        )
+
+    def test_resolves_uk_wtc_basic_element_amount(self, pipeline):
+        assert (
+            pipeline._resolve_pe_variable("uk", "wtc_basic_element_amount")
+            == "WTC_basic_element"
+        )
+
+    def test_resolves_uk_wtc_lone_parent_element_amount(self, pipeline):
+        assert (
+            pipeline._resolve_pe_variable("uk", "wtc_lone_parent_element_amount")
+            == "WTC_lone_parent_element"
+        )
+
+    def test_resolves_uk_wtc_couple_element_amount(self, pipeline):
+        assert (
+            pipeline._resolve_pe_variable("uk", "wtc_couple_element_amount")
+            == "WTC_couple_element"
+        )
+
+    def test_resolves_uk_wtc_second_adult_element_amount(self, pipeline):
+        assert (
+            pipeline._resolve_pe_variable("uk", "wtc_second_adult_element_amount")
+            == "WTC_couple_element"
+        )
+
 
 class TestDetectPolicyengineCountry:
     def test_detects_uk_from_embedded_source(self, pipeline, temp_dirs):
@@ -3072,6 +3124,59 @@ child_benefit_enhanced_rate_amount:
         )
         country = pipeline._detect_policyengine_country(rac_file, rac_file.read_text())
         assert country == "uk"
+
+
+class TestBuildPeUkAdditionalScenarios:
+    def test_uk_uc_standard_allowance_single_young_script_builds_single_under_25_case(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "uc_standard_allowance",
+            {"period": "2025-04-01"},
+            "2025",
+            316.98,
+            country="uk",
+            rac_var="uc_standard_allowance_single_claimant_aged_under_25",
+        )
+
+        assert "sim.calculate('uc_standard_allowance', int('2025'))" in script
+        assert "'members': ['adult']" in script
+        assert "'age': {2025: 24}" in script
+        assert "val = float(annual[0]) / 12" in script
+
+    def test_uk_uc_child_first_higher_amount_script_builds_pre_limit_child_case(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "uc_individual_child_element",
+            {"period": "2025-04-01"},
+            "2025",
+            339.0,
+            country="uk",
+            rac_var="uc_child_element_first_child_higher_amount",
+        )
+
+        assert "sim.calculate('uc_individual_child_element', int('2025'))" in script
+        assert "'birth_year': {2025: 2015}" in script
+        assert "target_index = 0" in script
+        assert "val = float(annual[target_index]) / 12" in script
+
+    def test_uk_wtc_lone_parent_element_script_builds_child_and_claiming_case(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "WTC_lone_parent_element",
+            {"period": "2025-04-06"},
+            "2025",
+            2542.0,
+            country="uk",
+            rac_var="wtc_lone_parent_element_amount",
+        )
+
+        assert "sim.calculate('WTC_lone_parent_element', int('2025'))" in script
+        assert "'working_tax_credit_reported': {2025: 1}" in script
+        assert "'weekly_hours': {2025: 16}" in script
+        assert "'child': {'age': {2025: 10}}" in script
 
     def test_detects_us_by_default(self, pipeline, temp_dirs):
         rac_us, _ = temp_dirs

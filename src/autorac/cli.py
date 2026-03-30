@@ -386,6 +386,11 @@ def main():
         help="Allow encoding a parent section even when atomic child sections exist",
     )
     eval_akn_section_parser.add_argument(
+        "--table-row-query",
+        default=None,
+        help="Filter extracted section tables down to the matching row plus local table context",
+    )
+    eval_akn_section_parser.add_argument(
         "--runner",
         action="append",
         default=[],
@@ -438,6 +443,11 @@ def main():
         "--allow-parent",
         action="store_true",
         help="Allow encoding a parent section even when atomic child sections exist",
+    )
+    eval_uk_legislation_parser.add_argument(
+        "--table-row-query",
+        default=None,
+        help="Filter extracted section tables down to the matching row plus local table context",
     )
     eval_uk_legislation_parser.add_argument(
         "--runner",
@@ -1903,6 +1913,7 @@ def cmd_eval_akn_section(args):
         mode=args.mode,
         extra_context_paths=[Path(path) for path in args.allow_context],
         allow_parent=args.allow_parent,
+        table_row_query=args.table_row_query,
     )
 
     if args.json:
@@ -1913,6 +1924,8 @@ def cmd_eval_akn_section(args):
     print(f"rac: {rac_path}")
     print(f"AKN file: {args.akn_file}")
     print(f"Section: {args.section_eid}")
+    if args.table_row_query:
+        print(f"Table row query: {args.table_row_query}")
     print(f"Mode: {args.mode}")
     print()
 
@@ -1954,6 +1967,7 @@ def cmd_eval_uk_legislation_section(args):
         mode=args.mode,
         extra_context_paths=[Path(path) for path in args.allow_context],
         allow_parent=args.allow_parent,
+        table_row_query=args.table_row_query,
     )
 
     if args.json:
@@ -1965,6 +1979,8 @@ def cmd_eval_uk_legislation_section(args):
     print(f"Source: {args.source_ref}")
     if args.section_eid:
         print(f"Section: {args.section_eid}")
+    if args.table_row_query:
+        print(f"Table row query: {args.table_row_query}")
     print(f"Mode: {args.mode}")
     print()
 

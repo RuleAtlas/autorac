@@ -172,6 +172,23 @@ class TestMain:
                 main()
                 mock_cmd.assert_called_once()
 
+    def test_eval_uk_legislation_section_accepts_table_row_query(self):
+        with patch(
+            "sys.argv",
+            [
+                "autorac",
+                "eval-uk-legislation-section",
+                "/uksi/2013/376/regulation/36/2025-04-01",
+                "--section-eid",
+                "regulation-36-3",
+                "--table-row-query",
+                "single claimant aged under 25",
+            ],
+        ):
+            with patch("autorac.cli.cmd_eval_uk_legislation_section") as mock_cmd:
+                main()
+                mock_cmd.assert_called_once()
+
     def test_eval_suite_command_dispatches(self):
         with tempfile.NamedTemporaryFile(suffix=".yaml") as f:
             with patch("sys.argv", ["autorac", "eval-suite", f.name]):

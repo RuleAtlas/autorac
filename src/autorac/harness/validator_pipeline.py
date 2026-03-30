@@ -2136,6 +2136,13 @@ print("BENCHMARK:" + json.dumps(result))
                 "scottish_child_payment_regulation_20_1_amount": "scottish_child_payment",
                 "benefit_cap_single_claimant_greater_london_annual_limit": "benefit_cap",
                 "benefit_cap_family_outside_london_annual_limit": "benefit_cap",
+                "uc_standard_allowance_single_claimant_aged_under_25": "uc_standard_allowance",
+                "uc_carer_element_amount": "uc_carer_element",
+                "uc_child_element_first_child_higher_amount": "uc_individual_child_element",
+                "uc_lcwra_element_amount": "uc_LCWRA_element",
+                "wtc_basic_element_amount": "WTC_basic_element",
+                "wtc_lone_parent_element_amount": "WTC_lone_parent_element",
+                "wtc_couple_element_amount": "WTC_couple_element",
             }
 
         return {
@@ -2320,6 +2327,55 @@ print("BENCHMARK:" + json.dumps(result))
             )
         )
 
+    @staticmethod
+    def _is_uk_uc_standard_allowance_var(rac_var: str) -> bool:
+        rac_var_lower = rac_var.lower()
+        return "uc_standard_allowance" in rac_var_lower and not rac_var_lower.endswith(
+            "_applies"
+        )
+
+    @staticmethod
+    def _is_uk_uc_carer_element_var(rac_var: str) -> bool:
+        rac_var_lower = rac_var.lower()
+        return "uc_carer_element" in rac_var_lower and not rac_var_lower.endswith(
+            "_applies"
+        )
+
+    @staticmethod
+    def _is_uk_uc_child_element_var(rac_var: str) -> bool:
+        rac_var_lower = rac_var.lower()
+        return "uc_child_element" in rac_var_lower and not rac_var_lower.endswith(
+            "_applies"
+        )
+
+    @staticmethod
+    def _is_uk_uc_lcwra_element_var(rac_var: str) -> bool:
+        rac_var_lower = rac_var.lower()
+        return any(
+            marker in rac_var_lower
+            for marker in ("uc_lcwra_element", "uc_limited_capability_for_work_related_activity")
+        ) and not rac_var_lower.endswith("_applies")
+
+    @staticmethod
+    def _is_uk_wtc_basic_element_var(rac_var: str) -> bool:
+        rac_var_lower = rac_var.lower()
+        return "wtc_basic" in rac_var_lower or "working_tax_credit_basic_element" in rac_var_lower
+
+    @staticmethod
+    def _is_uk_wtc_lone_parent_element_var(rac_var: str) -> bool:
+        rac_var_lower = rac_var.lower()
+        return "wtc_lone_parent" in rac_var_lower or "working_tax_credit_lone_parent_element" in rac_var_lower
+
+    @staticmethod
+    def _is_uk_wtc_couple_element_var(rac_var: str) -> bool:
+        rac_var_lower = rac_var.lower()
+        return (
+            "wtc_couple" in rac_var_lower
+            or "working_tax_credit_couple_element" in rac_var_lower
+            or "wtc_second_adult" in rac_var_lower
+            or "working_tax_credit_second_adult_element" in rac_var_lower
+        )
+
     # PE variables that are defined as monthly (not annual)
     _PE_MONTHLY_VARS = {
         "snap",
@@ -2431,6 +2487,20 @@ print("BENCHMARK:" + json.dumps(result))
             rac_var_lower
         ):
             return "standard_minimum_guarantee"
+        if country == "uk" and self._is_uk_uc_standard_allowance_var(rac_var_lower):
+            return "uc_standard_allowance"
+        if country == "uk" and self._is_uk_uc_carer_element_var(rac_var_lower):
+            return "uc_carer_element"
+        if country == "uk" and self._is_uk_uc_child_element_var(rac_var_lower):
+            return "uc_individual_child_element"
+        if country == "uk" and self._is_uk_uc_lcwra_element_var(rac_var_lower):
+            return "uc_LCWRA_element"
+        if country == "uk" and self._is_uk_wtc_basic_element_var(rac_var_lower):
+            return "WTC_basic_element"
+        if country == "uk" and self._is_uk_wtc_lone_parent_element_var(rac_var_lower):
+            return "WTC_lone_parent_element"
+        if country == "uk" and self._is_uk_wtc_couple_element_var(rac_var_lower):
+            return "WTC_couple_element"
         if country == "uk" and self._is_uk_scottish_child_payment_rate_var(
             rac_var_lower
         ):
@@ -2582,6 +2652,192 @@ print(f'RESULT:{{val}}')
         month_period = period_value[:7] if len(period_value) >= 7 else f"{year}-04"
         rac_var_lower = (rac_var or "").lower()
         lowered = {str(key).lower(): value for key, value in inputs.items()}
+
+        if pe_var == "uc_standard_allowance" and self._is_uk_uc_standard_allowance_var(
+            rac_var_lower
+        ):
+            is_single = "couple" not in rac_var_lower and not any(
+                marker in rac_var_lower for marker in ("joint", "partner")
+            )
+            if any(
+                ("couple" in key or "joint" in key) and value is not None
+                for key, value in lowered.items()
+            ):
+                is_single = not any(
+                    bool(value)
+                    for key, value in lowered.items()
+                    if ("couple" in key or "joint" in key) and value is not None
+                )
+            under_25 = any(
+                marker in rac_var_lower
+                for marker in ("under_25", "aged_under_25", "young")
+            ) and "over_25" not in rac_var_lower and "25_or_over" not in rac_var_lower
+            if any(
+                ("25_or_over" in key or "over_25" in key) and value is not None
+                for key, value in lowered.items()
+            ):
+                under_25 = not any(
+                    bool(value)
+                    for key, value in lowered.items()
+                    if ("25_or_over" in key or "over_25" in key) and value is not None
+                )
+
+            adult_ages = [24] if under_25 else [30]
+            if not is_single:
+                adult_ages = [24, 24] if under_25 else [30, 24]
+
+            people_parts = [
+                f"'adult': {{'age': {{{year}: {adult_ages[0]}}}}}",
+            ]
+            members = ["adult"]
+            if not is_single:
+                people_parts.append(
+                    f"'spouse': {{'age': {{{year}: {adult_ages[1]}}}}}"
+                )
+                members.append("spouse")
+            people = "{" + ", ".join(people_parts) + "}"
+            members_str = "[" + ", ".join(f"'{member}'" for member in members) + "]"
+
+            return f"""
+from policyengine_uk import Simulation
+
+situation = {{
+    'people': {people},
+    'benunits': {{'benunit': {{'members': {members_str}}}}},
+    'households': {{'household': {{'members': {members_str}}}}},
+}}
+
+sim = Simulation(situation=situation)
+annual = sim.calculate('uc_standard_allowance', int('{year}'))
+val = float(annual[0]) / 12
+print(f'RESULT:{{val}}')
+"""
+
+        if pe_var == "uc_carer_element" and self._is_uk_uc_carer_element_var(
+            rac_var_lower
+        ):
+            return f"""
+from policyengine_uk import Simulation
+
+situation = {{
+    'people': {{'adult': {{'age': {{{year}: 30}}, 'receives_carers_allowance': {{{year}: True}}}}}},
+    'benunits': {{'benunit': {{'members': ['adult']}}}},
+    'households': {{'household': {{'members': ['adult']}}}},
+}}
+
+sim = Simulation(situation=situation)
+annual = sim.calculate('uc_carer_element', int('{year}'))
+val = float(annual[0]) / 12
+print(f'RESULT:{{val}}')
+"""
+
+        if pe_var == "uc_LCWRA_element" and self._is_uk_uc_lcwra_element_var(
+            rac_var_lower
+        ):
+            return f"""
+from policyengine_uk import Simulation
+
+situation = {{
+    'people': {{'adult': {{'age': {{{year}: 30}}, 'is_disabled_for_benefits': {{{year}: True}}}}}},
+    'benunits': {{'benunit': {{'members': ['adult']}}}},
+    'households': {{'household': {{'members': ['adult']}}}},
+}}
+
+sim = Simulation(situation=situation)
+annual = sim.calculate('uc_LCWRA_element', int('{year}'))
+val = float(annual[0]) / 12
+print(f'RESULT:{{val}}')
+"""
+
+        if pe_var == "uc_individual_child_element" and self._is_uk_uc_child_element_var(
+            rac_var_lower
+        ):
+            target_is_first_higher = any(
+                marker in rac_var_lower for marker in ("first", "higher")
+            )
+            target_is_later_child = any(
+                marker in rac_var_lower for marker in ("second", "subsequent")
+            )
+
+            if target_is_first_higher:
+                people = (
+                    f"{{'child': {{'age': {{{year}: 10}}, 'birth_year': {{{year}: 2015}}}}}}"
+                )
+                benunit_members = "['child']"
+                household_members = "['child']"
+                target_index = 0
+            elif target_is_later_child:
+                people = (
+                    f"{{'older': {{'age': {{{year}: 10}}, 'birth_year': {{{year}: 2015}}}}, "
+                    f"'child': {{'age': {{{year}: 7}}, 'birth_year': {{{year}: 2018}}}}}}"
+                )
+                benunit_members = "['older', 'child']"
+                household_members = "['older', 'child']"
+                target_index = 1
+            else:
+                people = (
+                    f"{{'child': {{'age': {{{year}: 7}}, 'birth_year': {{{year}: 2018}}}}}}"
+                )
+                benunit_members = "['child']"
+                household_members = "['child']"
+                target_index = 0
+
+            return f"""
+from policyengine_uk import Simulation
+
+situation = {{
+    'people': {people},
+    'benunits': {{'benunit': {{'members': {benunit_members}}}}},
+    'households': {{'household': {{'members': {household_members}}}}},
+}}
+
+sim = Simulation(situation=situation)
+annual = sim.calculate('uc_individual_child_element', int('{year}'))
+target_index = {target_index}
+val = float(annual[target_index]) / 12
+print(f'RESULT:{{val}}')
+"""
+
+        if pe_var in {"WTC_basic_element", "WTC_lone_parent_element", "WTC_couple_element"} and (
+            self._is_uk_wtc_basic_element_var(rac_var_lower)
+            or self._is_uk_wtc_lone_parent_element_var(rac_var_lower)
+            or self._is_uk_wtc_couple_element_var(rac_var_lower)
+        ):
+            if pe_var == "WTC_lone_parent_element":
+                people = (
+                    f"{{'adult': {{'age': {{{year}: 30}}, 'weekly_hours': {{{year}: 16}}, 'working_tax_credit_reported': {{{year}: 1}}}}, "
+                    f"'child': {{'age': {{{year}: 10}}}}}}"
+                )
+                benunit_members = "['adult', 'child']"
+                household_members = "['adult', 'child']"
+            elif pe_var == "WTC_couple_element":
+                people = (
+                    f"{{'adult': {{'age': {{{year}: 30}}, 'weekly_hours': {{{year}: 30}}, 'working_tax_credit_reported': {{{year}: 1}}}}, "
+                    f"'spouse': {{'age': {{{year}: 30}}, 'weekly_hours': {{{year}: 0}}}}}}"
+                )
+                benunit_members = "['adult', 'spouse']"
+                household_members = "['adult', 'spouse']"
+            else:
+                people = (
+                    f"{{'adult': {{'age': {{{year}: 30}}, 'weekly_hours': {{{year}: 30}}, 'working_tax_credit_reported': {{{year}: 1}}}}}}"
+                )
+                benunit_members = "['adult']"
+                household_members = "['adult']"
+
+            return f"""
+from policyengine_uk import Simulation
+
+situation = {{
+    'people': {people},
+    'benunits': {{'benunit': {{'members': {benunit_members}}}}},
+    'households': {{'household': {{'members': {household_members}}}}},
+}}
+
+sim = Simulation(situation=situation)
+annual = sim.calculate('{pe_var}', int('{year}'))
+val = float(annual[0])
+print(f'RESULT:{{val}}')
+"""
 
         if pe_var == "standard_minimum_guarantee" and self._is_uk_pension_credit_standard_minimum_guarantee_var(
             rac_var_lower
