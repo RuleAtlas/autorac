@@ -1070,6 +1070,7 @@ class TestEvalPrompt:
         assert "use boolean or fact-shaped helper inputs" in prompt
         assert "Do not invent sample ages like `2`, `3`, `24`, or `25`" in prompt
         assert "keep `.rac.test` outputs scalar" in prompt
+        assert "keep the row-defining conditions satisfied" in prompt
 
     def test_build_eval_prompt_includes_import_vs_local_helper_protocol(
         self, tmp_path
