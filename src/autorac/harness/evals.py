@@ -2440,6 +2440,11 @@ def _clean_generated_file_content(content: str) -> str:
     )
     if fenced:
         stripped = fenced.group(1).strip()
+    stripped = re.sub(
+        r"(?<![\d.])(-?\d+(?:,\d{3})*(?:\.\d+)?)\s+(GBP|USD|EUR)\b",
+        lambda match: match.group(1),
+        stripped,
+    )
     return stripped + ("\n" if stripped and not stripped.endswith("\n") else "")
 
 

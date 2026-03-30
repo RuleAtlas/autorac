@@ -112,6 +112,20 @@ class TestGeneratedBundleCleaning:
             "    child_benefit_enhanced_rate: 26.05\n"
         )
 
+    def test_clean_generated_file_content_strips_inline_currency_suffixes(self):
+        content = (
+            "child_benefit_enhanced_rate_amount:\n"
+            "  from 2025-04-07: 26.05 GBP\n"
+            "- name: base\n"
+            "  output:\n"
+            "    child_benefit_enhanced_rate_amount: 26.05 GBP\n"
+        )
+
+        cleaned = _clean_generated_file_content(content)
+
+        assert "26.05 GBP" not in cleaned
+        assert "26.05" in cleaned
+
     def test_materialize_eval_artifact_cleans_bundled_fences(self, tmp_path):
         output_file = tmp_path / "source" / "uksi-2006-965-regulation-2.rac"
         llm_response = (

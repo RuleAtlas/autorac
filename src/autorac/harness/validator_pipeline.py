@@ -2556,43 +2556,42 @@ print("BENCHMARK:" + json.dumps(result))
                         False,
                         "RAC test uses downstream regulation exceptions that PolicyEngine UK does not represent directly",
                     )
-            if expected in {0, 0.0, "0", "0.0"}:
-                if self._is_uk_pension_credit_single_rate_var(rac_var_lower) and any(
+            if self._is_uk_pension_credit_single_rate_var(rac_var_lower) and any(
+                (
                     (
-                        (
-                            "has_partner" in str(key).lower()
-                            and "no_partner" not in str(key).lower()
-                            and bool(value)
-                        )
-                        or (
-                            "no_partner" in str(key).lower()
-                            and value is not None
-                            and not bool(value)
-                        )
-                    )
-                    for key, value in inputs.items()
-                ):
-                    return (
-                        False,
-                        "RAC test negates the pension-credit single-rate branch using partner facts that PolicyEngine UK only exposes through the parent standard minimum guarantee",
-                    )
-                if self._is_uk_pension_credit_couple_rate_var(rac_var_lower) and (
-                    any(
-                        "no_partner" in str(key).lower() and bool(value)
-                        for key, value in inputs.items()
-                    )
-                    or any(
                         "has_partner" in str(key).lower()
                         and "no_partner" not in str(key).lower()
+                        and bool(value)
+                    )
+                    or (
+                        "no_partner" in str(key).lower()
                         and value is not None
                         and not bool(value)
-                        for key, value in inputs.items()
                     )
-                ):
-                    return (
-                        False,
-                        "RAC test negates the pension-credit couple-rate branch using partner facts that PolicyEngine UK only exposes through the parent standard minimum guarantee",
-                    )
+                )
+                for key, value in inputs.items()
+            ):
+                return (
+                    False,
+                    "RAC test negates the pension-credit single-rate branch using partner facts that PolicyEngine UK only exposes through the parent standard minimum guarantee",
+                )
+            if self._is_uk_pension_credit_couple_rate_var(rac_var_lower) and (
+                any(
+                    "no_partner" in str(key).lower() and bool(value)
+                    for key, value in inputs.items()
+                )
+                or any(
+                    "has_partner" in str(key).lower()
+                    and "no_partner" not in str(key).lower()
+                    and value is not None
+                    and not bool(value)
+                    for key, value in inputs.items()
+                )
+            ):
+                return (
+                    False,
+                    "RAC test negates the pension-credit couple-rate branch using partner facts that PolicyEngine UK only exposes through the parent standard minimum guarantee",
+                )
         if (
             country == "uk"
             and "scottish_child_payment" in rac_var_lower
