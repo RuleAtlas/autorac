@@ -1785,6 +1785,20 @@ print("BENCHMARK:" + json.dumps(result))
         """
         tests = []
 
+        def normalize_test_value(value: Any) -> Any:
+            if isinstance(value, dict):
+                normalized = {
+                    key: normalize_test_value(inner) for key, inner in value.items()
+                }
+                if len(normalized) == 1:
+                    only_value = next(iter(normalized.values()))
+                    if not isinstance(only_value, (dict, list)):
+                        return only_value
+                return normalized
+            if isinstance(value, list):
+                return [normalize_test_value(item) for item in value]
+            return value
+
         # Try full YAML parse first — handles .rac.test format cleanly
         try:
             # Strip comments and docstrings before parsing
@@ -1827,14 +1841,36 @@ print("BENCHMARK:" + json.dumps(result))
                     if isinstance(value, list):
                         for test_case in value:
                             if isinstance(test_case, dict) and "expect" in test_case:
-                                test_case["variable"] = key
-                                tests.append(test_case)
+                                normalized_case = dict(test_case)
+                                normalized_case["expect"] = normalize_test_value(
+                                    normalized_case.get("expect")
+                                )
+                                if isinstance(normalized_case.get("inputs"), dict):
+                                    normalized_case["inputs"] = {
+                                        input_key: normalize_test_value(input_value)
+                                        for input_key, input_value in normalized_case[
+                                            "inputs"
+                                        ].items()
+                                    }
+                                normalized_case["variable"] = key
+                                tests.append(normalized_case)
                     # Nested tests: section within a variable block
                     elif isinstance(value, dict) and "tests" in value:
                         for test_case in value.get("tests", []):
                             if isinstance(test_case, dict) and "expect" in test_case:
-                                test_case["variable"] = key
-                                tests.append(test_case)
+                                normalized_case = dict(test_case)
+                                normalized_case["expect"] = normalize_test_value(
+                                    normalized_case.get("expect")
+                                )
+                                if isinstance(normalized_case.get("inputs"), dict):
+                                    normalized_case["inputs"] = {
+                                        input_key: normalize_test_value(input_value)
+                                        for input_key, input_value in normalized_case[
+                                            "inputs"
+                                        ].items()
+                                    }
+                                normalized_case["variable"] = key
+                                tests.append(normalized_case)
             elif isinstance(parsed, list):
                 for test_case in parsed:
                     if not isinstance(test_case, dict):
@@ -1843,14 +1879,22 @@ print("BENCHMARK:" + json.dumps(result))
                     if not isinstance(outputs, dict):
                         continue
                     inputs = test_case.get("input", test_case.get("inputs", {}))
+                    normalized_inputs = (
+                        {
+                            key: normalize_test_value(value)
+                            for key, value in inputs.items()
+                        }
+                        if isinstance(inputs, dict)
+                        else inputs or {}
+                    )
                     for variable, expected in outputs.items():
                         tests.append(
                             {
                                 "variable": variable,
                                 "name": test_case.get("name"),
                                 "period": test_case.get("period"),
-                                "inputs": inputs or {},
-                                "expect": expected,
+                                "inputs": normalized_inputs,
+                                "expect": normalize_test_value(expected),
                             }
                         )
         except Exception:
@@ -1970,10 +2014,18 @@ print("BENCHMARK:" + json.dumps(result))
         }:
             for key, value in inputs.items():
                 key_lower = str(key).lower()
-                if "subject_to_paragraphs" in key_lower and value is False:
+                if (
+                    "subject_to_paragraphs" in key_lower
+                    or "paragraphs_two_to_five_apply" in key_lower
+                ) and bool(value):
                     return (
                         False,
                         "RAC test uses placeholder paragraph-exception conditions that PolicyEngine UK does not represent directly",
+                    )
+                if "payable" in key_lower and not bool(value):
+                    return (
+                        False,
+                        "RAC test encodes take-up/payability conditions that PolicyEngine UK's statutory rate variable does not represent directly",
                     )
         return True, None
 
@@ -2119,13 +2171,42 @@ print(f'RESULT:{{val}}')
         month_period = period_value[:7] if len(period_value) >= 7 else f"{year}-04"
 
         lowered = {str(key).lower(): value for key, value in inputs.items()}
-        only_person = any("only_person" in key and bool(value) for key, value in lowered.items())
+        only_person = any(
+            "only_person" in key and bool(value) for key, value in lowered.items()
+        )
         elder_or_eldest = any(
             ("elder_or_eldest" in key or "eldest_person" in key) and bool(value)
             for key, value in lowered.items()
         )
+        payable = next(
+            (
+                bool(value)
+                for key, value in lowered.items()
+                if "payable" in key or "would_claim_child_benefit" in key
+            ),
+            True,
+        )
+        age_order = next(
+            (
+                int(value)
+                for key, value in lowered.items()
+                if "age_order" in key and value is not None
+            ),
+            None,
+        )
 
-        if only_person:
+        if age_order is not None:
+            if age_order <= 1:
+                people = f"{{'target': {{'age': {{{year}: 10}}}}}}"
+                benunit_members = "['target']"
+                household_members = "['target']"
+                target_index = 0
+            else:
+                people = f"""{{'older': {{'age': {{{year}: 12}}}}, 'target': {{'age': {{{year}: 11}}}}}}"""
+                benunit_members = "['older', 'target']"
+                household_members = "['older', 'target']"
+                target_index = 1
+        elif only_person:
             people = f"{{'target': {{'age': {{{year}: 10}}}}}}"
             benunit_members = "['target']"
             household_members = "['target']"
@@ -2141,28 +2222,12 @@ print(f'RESULT:{{val}}')
             household_members = "['older', 'target']"
             target_index = 1
 
-        if rac_var == "child_benefit_enhanced_rate":
-            return f"""
-from policyengine_uk import Simulation
-
-situation = {{
-    'people': {{'target': {{'age': {{{year}: 10}}}}}},
-    'benunits': {{'benunit': {{'members': ['target'], 'would_claim_child_benefit': {{{year}: True}}}}}},
-    'households': {{'household': {{'members': ['target']}}}},
-}}
-
-sim = Simulation(situation=situation)
-monthly = sim.calculate('{pe_var}', '{month_period}')
-val = float(monthly[0]) * 12 / 52
-print(f'RESULT:{{val}}')
-"""
-
         return f"""
 from policyengine_uk import Simulation
 
 situation = {{
     'people': {people},
-    'benunits': {{'benunit': {{'members': {benunit_members}, 'would_claim_child_benefit': {{{year}: True}}}}}},
+    'benunits': {{'benunit': {{'members': {benunit_members}, 'would_claim_child_benefit': {{{year}: {payable}}}}}}},
     'households': {{'household': {{'members': {household_members}}}}},
 }}
 

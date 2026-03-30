@@ -198,6 +198,26 @@ class TestExtractTestsFromRacV2ListFormat:
         assert tests[0]["expect"] == 26.05
         assert tests[1]["expect"] == 0
 
+    def test_flattens_singleton_entity_shaped_inputs_and_outputs(self, pipeline):
+        content = """
+- name: entity_shaped_case
+  period: 2025-04-07
+  input:
+    child_benefit_payable:
+      child: true
+    child_benefit_age_order:
+      child: 2
+  output:
+    child_benefit_enhanced_rate:
+      child: 0
+"""
+        tests = pipeline._extract_tests_from_rac_v2(content)
+
+        assert len(tests) == 1
+        assert tests[0]["inputs"]["child_benefit_payable"] is True
+        assert tests[0]["inputs"]["child_benefit_age_order"] == 2
+        assert tests[0]["expect"] == 0
+
 
 # =========================================================================
 # Prompt constants
@@ -1364,7 +1384,7 @@ child_benefit_enhanced_rate_amount:
   period: 2025-04-07
   input:
     child_benefit_is_only_person: true
-    child_benefit_subject_to_paragraphs_2_to_5_condition_satisfied: false
+    child_benefit_subject_to_paragraphs_2_to_5_condition_satisfied: true
   output:
     child_benefit_enhanced_rate_amount: 0
 """
@@ -1922,6 +1942,57 @@ class TestBuildPeScenarioScript:
         assert "'benunits'" in script
         assert "child_benefit_respective_amount" in script
         assert "12 / 52" in script
+
+    def test_uk_child_benefit_leaf_script_supports_age_order_and_payable_inputs(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "child_benefit_respective_amount",
+            {
+                "child_benefit_payable": True,
+                "child_benefit_age_order": 2,
+                "period": "2025-04-07",
+            },
+            "2025",
+            0,
+            country="uk",
+            rac_var="child_benefit_enhanced_rate",
+        )
+        assert "'older'" in script
+        assert "monthly[1]" in script
+        assert "would_claim_child_benefit': {2025: True}" in script
+
+
+class TestIsPeTestMappable:
+    def test_uk_child_benefit_paragraph_exception_true_is_unmappable(self, pipeline):
+        mappable, reason = pipeline._is_pe_test_mappable(
+            "uk",
+            "child_benefit_enhanced_rate",
+            {"child_benefit_paragraphs_two_to_five_apply": True},
+        )
+
+        assert mappable is False
+        assert "does not represent directly" in reason
+
+    def test_uk_child_benefit_paragraph_exception_false_is_mappable(self, pipeline):
+        mappable, reason = pipeline._is_pe_test_mappable(
+            "uk",
+            "child_benefit_enhanced_rate",
+            {"child_benefit_paragraphs_two_to_five_apply": False},
+        )
+
+        assert mappable is True
+        assert reason is None
+
+    def test_uk_child_benefit_not_payable_false_is_unmappable(self, pipeline):
+        mappable, reason = pipeline._is_pe_test_mappable(
+            "uk",
+            "child_benefit_enhanced_rate",
+            {"child_benefit_payable": False},
+        )
+
+        assert mappable is False
+        assert "take-up" in reason.lower()
 
 
 class TestDetectPolicyengineCountry:
