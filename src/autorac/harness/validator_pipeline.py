@@ -1340,10 +1340,28 @@ Output ONLY valid JSON:
             oracle_rac_var = self.policyengine_rac_var_hint or test_rac_var
             pe_var = self._resolve_pe_variable(country, oracle_rac_var)
             expected = test.get("expect")
-            inputs = test.get("inputs", {})
-            period = test.get("period", "2024-01")
+            raw_inputs = test.get("inputs", {})
+            inputs = dict(raw_inputs) if isinstance(raw_inputs, dict) else raw_inputs
+            period = (
+                test.get("period")
+                or test.get("date")
+                or (
+                    inputs.get("period")
+                    if isinstance(inputs, dict)
+                    else None
+                )
+                or (
+                    inputs.get("date")
+                    if isinstance(inputs, dict)
+                    else None
+                )
+                or "2024-01"
+            )
             period_str = str(period)
             year = period_str.split("-")[0] if "-" in period_str else period_str
+            if isinstance(inputs, dict):
+                inputs.pop("period", None)
+                inputs.pop("date", None)
 
             if expected is None:
                 continue
@@ -1895,6 +1913,25 @@ print("BENCHMARK:" + json.dumps(result))
                     for key, inner in value.items():
                         if str(key).lower() == "value":
                             return normalize_test_value(inner)
+                singleton_entity_value_keys = {
+                    "person",
+                    "people",
+                    "family",
+                    "families",
+                    "household",
+                    "households",
+                    "tax_unit",
+                    "taxunit",
+                    "tax_units",
+                    "benunit",
+                    "benunits",
+                }
+                if "value" in lowered_keys:
+                    other_keys = lowered_keys - {"value"}
+                    if len(other_keys) == 1 and next(iter(other_keys)) in singleton_entity_value_keys:
+                        for key, inner in value.items():
+                            if str(key).lower() == "value":
+                                return normalize_test_value(inner)
                 normalized = {
                     key: normalize_test_value(inner) for key, inner in value.items()
                 }
@@ -2131,6 +2168,7 @@ print("BENCHMARK:" + json.dumps(result))
                 "child_benefit_enhanced_rate": "child_benefit_respective_amount",
                 "child_benefit_enhanced_rate_amount": "child_benefit_respective_amount",
                 "child_benefit_enhanced_weekly_rate": "child_benefit_respective_amount",
+                "child_benefit_rate_a_enhanced_rate": "child_benefit_respective_amount",
                 "child_benefit_regulation_2_1_a_amount": "child_benefit_respective_amount",
                 "child_benefit_reg2_1_a": "child_benefit_respective_amount",
                 "child_benefit_weekly_rate": "child_benefit_respective_amount",
@@ -2194,6 +2232,7 @@ print("BENCHMARK:" + json.dumps(result))
             for marker in (
                 "child_benefit_enhanced_rate",
                 "child_benefit_enhanced_weekly_rate",
+                "child_benefit_rate_a",
                 "child_benefit_weekly_rate",
                 "regulation_2_1_a",
                 "reg2_1_a",
@@ -2214,6 +2253,7 @@ print("BENCHMARK:" + json.dumps(result))
                 "other_case",
                 "regulation_2_1_b",
                 "reg2_1_b",
+                "child_benefit_rate_b",
                 "child_benefit_weekly_rate_b",
             )
         )
@@ -2391,6 +2431,22 @@ print("BENCHMARK:" + json.dumps(result))
             or "working_tax_credit_second_adult_element" in rac_var_lower
         )
 
+    @staticmethod
+    def _is_uk_table_row_amount_var(rac_var: str) -> bool:
+        rac_var_lower = rac_var.lower()
+        return any(
+            checker(rac_var_lower)
+            for checker in (
+                ValidatorPipeline._is_uk_uc_standard_allowance_var,
+                ValidatorPipeline._is_uk_uc_carer_element_var,
+                ValidatorPipeline._is_uk_uc_child_element_var,
+                ValidatorPipeline._is_uk_uc_lcwra_element_var,
+                ValidatorPipeline._is_uk_wtc_basic_element_var,
+                ValidatorPipeline._is_uk_wtc_lone_parent_element_var,
+                ValidatorPipeline._is_uk_wtc_couple_element_var,
+            )
+        )
+
     # PE variables that are defined as monthly (not annual)
     _PE_MONTHLY_VARS = {
         "snap",
@@ -2425,6 +2481,15 @@ print("BENCHMARK:" + json.dumps(result))
             return (
                 False,
                 "RAC test expects multi-entity outputs that the current PolicyEngine UK harness cannot compare directly",
+            )
+        if (
+            country == "uk"
+            and self._is_uk_table_row_amount_var(rac_var_lower)
+            and expected in {0, 0.0, "0", "0.0"}
+        ):
+            return (
+                False,
+                "RAC test is a row-specific zero case for a table amount slice that PolicyEngine UK does not represent as a separate zero-valued branch",
             )
         if country == "uk" and self._is_uk_child_benefit_rate_var(rac_var_lower):
             for key, value in inputs.items():
@@ -2665,6 +2730,7 @@ print(f'RESULT:{{val}}')
         """Build a Python script to run a UK PolicyEngine scenario."""
         period_value = str(inputs.get("period", f"{year}-04"))
         month_period = period_value[:7] if len(period_value) >= 7 else f"{year}-04"
+        year_key = repr(str(year))
         rac_var_lower = (rac_var or "").lower()
         lowered = {str(key).lower(): value for key, value in inputs.items()}
 
@@ -2702,12 +2768,12 @@ print(f'RESULT:{{val}}')
                 adult_ages = [24, 24] if under_25 else [30, 24]
 
             people_parts = [
-                f"'adult': {{'age': {{{year}: {adult_ages[0]}}}}}",
+                f"'adult': {{'age': {{{year_key}: {adult_ages[0]}}}}}",
             ]
             members = ["adult"]
             if not is_single:
                 people_parts.append(
-                    f"'spouse': {{'age': {{{year}: {adult_ages[1]}}}}}"
+                    f"'spouse': {{'age': {{{year_key}: {adult_ages[1]}}}}}"
                 )
                 members.append("spouse")
             people = "{" + ", ".join(people_parts) + "}"
@@ -2735,7 +2801,7 @@ print(f'RESULT:{{val}}')
 from policyengine_uk import Simulation
 
 situation = {{
-    'people': {{'adult': {{'age': {{{year}: 30}}, 'receives_carers_allowance': {{{year}: True}}}}}},
+    'people': {{'adult': {{'age': {{{year_key}: 30}}, 'receives_carers_allowance': {{{year_key}: True}}}}}},
     'benunits': {{'benunit': {{'members': ['adult']}}}},
     'households': {{'household': {{'members': ['adult']}}}},
 }}
@@ -2753,7 +2819,7 @@ print(f'RESULT:{{val}}')
 from policyengine_uk import Simulation
 
 situation = {{
-    'people': {{'adult': {{'age': {{{year}: 30}}, 'is_disabled_for_benefits': {{{year}: True}}}}}},
+    'people': {{'adult': {{'age': {{{year_key}: 30}}, 'is_disabled_for_benefits': {{{year_key}: True}}}}}},
     'benunits': {{'benunit': {{'members': ['adult']}}}},
     'households': {{'household': {{'members': ['adult']}}}},
 }}
@@ -2776,22 +2842,22 @@ print(f'RESULT:{{val}}')
 
             if target_is_first_higher:
                 people = (
-                    f"{{'child': {{'age': {{{year}: 10}}, 'birth_year': {{{year}: 2015}}}}}}"
+                    f"{{'child': {{'age': {{{year_key}: 10}}, 'birth_year': {{{year_key}: 2015}}}}}}"
                 )
                 benunit_members = "['child']"
                 household_members = "['child']"
                 target_index = 0
             elif target_is_later_child:
                 people = (
-                    f"{{'older': {{'age': {{{year}: 10}}, 'birth_year': {{{year}: 2015}}}}, "
-                    f"'child': {{'age': {{{year}: 7}}, 'birth_year': {{{year}: 2018}}}}}}"
+                    f"{{'older': {{'age': {{{year_key}: 10}}, 'birth_year': {{{year_key}: 2015}}}}, "
+                    f"'child': {{'age': {{{year_key}: 7}}, 'birth_year': {{{year_key}: 2018}}}}}}"
                 )
                 benunit_members = "['older', 'child']"
                 household_members = "['older', 'child']"
                 target_index = 1
             else:
                 people = (
-                    f"{{'child': {{'age': {{{year}: 7}}, 'birth_year': {{{year}: 2018}}}}}}"
+                    f"{{'child': {{'age': {{{year_key}: 7}}, 'birth_year': {{{year_key}: 2018}}}}}}"
                 )
                 benunit_members = "['child']"
                 household_members = "['child']"
@@ -2820,21 +2886,21 @@ print(f'RESULT:{{val}}')
         ):
             if pe_var == "WTC_lone_parent_element":
                 people = (
-                    f"{{'adult': {{'age': {{{year}: 30}}, 'weekly_hours': {{{year}: 16}}, 'working_tax_credit_reported': {{{year}: 1}}}}, "
-                    f"'child': {{'age': {{{year}: 10}}}}}}"
+                    f"{{'adult': {{'age': {{{year_key}: 30}}, 'weekly_hours': {{{year_key}: 16}}, 'working_tax_credit_reported': {{{year_key}: 1}}}}, "
+                    f"'child': {{'age': {{{year_key}: 10}}}}}}"
                 )
                 benunit_members = "['adult', 'child']"
                 household_members = "['adult', 'child']"
             elif pe_var == "WTC_couple_element":
                 people = (
-                    f"{{'adult': {{'age': {{{year}: 30}}, 'weekly_hours': {{{year}: 30}}, 'working_tax_credit_reported': {{{year}: 1}}}}, "
-                    f"'spouse': {{'age': {{{year}: 30}}, 'weekly_hours': {{{year}: 0}}}}}}"
+                    f"{{'adult': {{'age': {{{year_key}: 30}}, 'weekly_hours': {{{year_key}: 30}}, 'working_tax_credit_reported': {{{year_key}: 1}}}}, "
+                    f"'spouse': {{'age': {{{year_key}: 30}}, 'weekly_hours': {{{year_key}: 0}}}}}}"
                 )
                 benunit_members = "['adult', 'spouse']"
                 household_members = "['adult', 'spouse']"
             else:
                 people = (
-                    f"{{'adult': {{'age': {{{year}: 30}}, 'weekly_hours': {{{year}: 30}}, 'working_tax_credit_reported': {{{year}: 1}}}}}}"
+                    f"{{'adult': {{'age': {{{year_key}: 30}}, 'weekly_hours': {{{year_key}: 30}}, 'working_tax_credit_reported': {{{year_key}: 1}}}}}}"
                 )
                 benunit_members = "['adult']"
                 household_members = "['adult']"
@@ -2898,12 +2964,12 @@ print(f'RESULT:{{val}}')
             else:
                 scenario_is_couple = False
 
-            people = f"{{'adult': {{'age': {{{year}: 70}}}}}}"
+            people = f"{{'adult': {{'age': {{{year_key}: 70}}}}}}"
             benunit_members = "['adult']"
             household_members = "['adult']"
             if scenario_is_couple:
                 people = (
-                    f"{{'adult': {{'age': {{{year}: 70}}}}, 'spouse': {{'age': {{{year}: 70}}}}}}"
+                    f"{{'adult': {{'age': {{{year_key}: 70}}}}, 'spouse': {{'age': {{{year_key}: 70}}}}}}"
                 )
                 benunit_members = "['adult', 'spouse']"
                 household_members = "['adult', 'spouse']"
@@ -3000,9 +3066,9 @@ print(f'RESULT:{{val}}')
 from policyengine_uk import Simulation
 
 situation = {{
-    'people': {{'child': {{'age': {{{year}: {child_age}}}, 'would_claim_scp': {{{year}: {would_claim}}}}}}},
-    'benunits': {{'benunit': {{'members': ['child'], 'universal_credit': {{{year}: {qualifying_benefit_amount}}}}}}},
-    'households': {{'household': {{'members': ['child'], 'country': {{{year}: '{country_value}'}}}}}},
+    'people': {{'child': {{'age': {{{year_key}: {child_age}}}, 'would_claim_scp': {{{year_key}: {would_claim}}}}}}},
+    'benunits': {{'benunit': {{'members': ['child'], 'universal_credit': {{{year_key}: {qualifying_benefit_amount}}}}}}},
+    'households': {{'household': {{'members': ['child'], 'country': {{{year_key}: '{country_value}'}}}}}},
 }}
 
 sim = Simulation(situation=situation)
@@ -3257,12 +3323,12 @@ print(f'RESULT:{{val}}')
                 )
 
             members = ["adult"] if is_single else ["adult", "spouse"]
-            people_parts = [f"'adult': {{'age': {{{year}: 30}}}}"]
+            people_parts = [f"'adult': {{'age': {{{year_key}: 30}}}}"]
             if not is_single:
-                people_parts.append(f"'spouse': {{'age': {{{year}: 30}}}}")
+                people_parts.append(f"'spouse': {{'age': {{{year_key}: 30}}}}")
             if has_child:
                 members.append("child")
-                people_parts.append(f"'child': {{'age': {{{year}: 10}}}}")
+                people_parts.append(f"'child': {{'age': {{{year_key}: 10}}}}")
 
             region_value = "LONDON" if in_london else "NORTH_EAST"
             people = "{" + ", ".join(people_parts) + "}"
@@ -3289,8 +3355,8 @@ from policyengine_uk import Simulation
 
 situation = {{
     'people': {people},
-    'benunits': {{'benunit': {{'members': {members_str}, 'is_benefit_cap_exempt': {{{year}: False}}}}}},
-    'households': {{'household': {{'members': {members_str}, 'region': {{{year}: '{region_value}'}}}}}},
+    'benunits': {{'benunit': {{'members': {members_str}, 'is_benefit_cap_exempt': {{{year_key}: False}}}}}},
+    'households': {{'household': {{'members': {members_str}, 'region': {{{year_key}: '{region_value}'}}}}}},
 }}
 
 sim = Simulation(situation=situation)
@@ -3385,33 +3451,33 @@ print(f'RESULT:{{val}}')
         )
 
         if not child_or_qyp:
-            people = f"{{'target': {{'age': {{{year}: 20}}}}}}"
+            people = f"{{'target': {{'age': {{{year_key}: 20}}}}}}"
             benunit_members = "['target']"
             household_members = "['target']"
             target_index = 0
         elif age_order is not None:
             if age_order <= 1:
-                people = f"{{'target': {{'age': {{{year}: 10}}}}}}"
+                people = f"{{'target': {{'age': {{{year_key}: 10}}}}}}"
                 benunit_members = "['target']"
                 household_members = "['target']"
                 target_index = 0
             else:
-                people = f"""{{'older': {{'age': {{{year}: 12}}}}, 'target': {{'age': {{{year}: 11}}}}}}"""
+                people = f"""{{'older': {{'age': {{{year_key}: 12}}}}, 'target': {{'age': {{{year_key}: 11}}}}}}"""
                 benunit_members = "['older', 'target']"
                 household_members = "['older', 'target']"
                 target_index = 1
         elif only_person:
-            people = f"{{'target': {{'age': {{{year}: 10}}}}}}"
+            people = f"{{'target': {{'age': {{{year_key}: 10}}}}}}"
             benunit_members = "['target']"
             household_members = "['target']"
             target_index = 0
         elif elder_or_eldest or other_case is False:
-            people = f"""{{'target': {{'age': {{{year}: 12}}}}, 'younger': {{'age': {{{year}: 11}}}}}}"""
+            people = f"""{{'target': {{'age': {{{year_key}: 12}}}}, 'younger': {{'age': {{{year_key}: 11}}}}}}"""
             benunit_members = "['target', 'younger']"
             household_members = "['target', 'younger']"
             target_index = 0
         else:
-            people = f"""{{'older': {{'age': {{{year}: 12}}}}, 'target': {{'age': {{{year}: 11}}}}}}"""
+            people = f"""{{'older': {{'age': {{{year_key}: 12}}}}, 'target': {{'age': {{{year_key}: 11}}}}}}"""
             benunit_members = "['older', 'target']"
             household_members = "['older', 'target']"
             target_index = 1
@@ -3442,7 +3508,7 @@ from policyengine_uk import Simulation
 
 situation = {{
     'people': {people},
-    'benunits': {{'benunit': {{'members': {benunit_members}, 'would_claim_child_benefit': {{{year}: {payable}}}}}}},
+    'benunits': {{'benunit': {{'members': {benunit_members}, 'would_claim_child_benefit': {{{year_key}: {payable}}}}}}},
     'households': {{'household': {{'members': {household_members}}}}},
 }}
 

@@ -1475,6 +1475,102 @@ source_row_amount:
         assert result.score == 1.0
         assert "uc_standard_allowance" in mock_run.call_args[0][0]
 
+    def test_pe_uk_prefers_nested_input_period_and_quotes_year_keys(
+        self, temp_dirs
+    ):
+        rac_us, rac_dir = temp_dirs
+        pipeline = ValidatorPipeline(
+            rac_us_path=rac_us,
+            rac_path=rac_dir,
+            enable_oracles=True,
+            policyengine_country="uk",
+            policyengine_rac_var_hint="regulation_80A_2_b_ii_applicable_annual_limit",
+        )
+        rac_file = rac_us / "benefit_cap_row.rac"
+        rac_file.write_text(
+            '''"""
+25323
+"""
+
+status: encoded
+
+regulation_80A_2_b_ii_applicable_annual_limit:
+    entity: TaxUnit
+    period: Year
+    dtype: Money
+'''
+        )
+        Path(str(rac_file) + ".test").write_text(
+            """
+- name: base case
+  input:
+    period: 2025-04-01
+    is_single_claimant: true
+    resident_in_greater_london: true
+    responsible_for_child_or_qualifying_young_person: true
+  output:
+    regulation_80A_2_b_ii_applicable_annual_limit: 25323
+"""
+        )
+
+        with patch.object(pipeline, "_find_pe_python", return_value="/usr/bin/python"):
+            with patch.object(
+                pipeline,
+                "_run_pe_subprocess_detailed",
+                return_value=OracleSubprocessResult(
+                    returncode=0, stdout="RESULT:25323.0\n"
+                ),
+            ) as mock_run:
+                result = pipeline._run_policyengine(rac_file)
+
+        assert result.passed is True
+        scenario_script = mock_run.call_args[0][0]
+        assert "'2025': 30" in scenario_script
+        assert "int('2025')" in scenario_script
+
+    def test_pe_uk_skips_zero_oracle_cases_for_table_row_amount_slices(
+        self, temp_dirs
+    ):
+        rac_us, rac_dir = temp_dirs
+        pipeline = ValidatorPipeline(
+            rac_us_path=rac_us,
+            rac_path=rac_dir,
+            enable_oracles=True,
+            policyengine_country="uk",
+        )
+        rac_file = rac_us / "uc_row_slice.rac"
+        rac_file.write_text(
+            '''"""
+317.82
+"""
+
+uc_standard_allowance_single_claimant_aged_under_25:
+    entity: TaxUnit
+    period: Month
+    dtype: Money
+'''
+        )
+        Path(str(rac_file) + ".test").write_text(
+            """
+- name: row-specific zero alternate
+  period: 2025-04
+  input:
+    is_single_claimant: false
+  output:
+    uc_standard_allowance_single_claimant_aged_under_25: 0
+"""
+        )
+
+        with patch.object(pipeline, "_find_pe_python", return_value="/usr/bin/python"):
+            with patch.object(pipeline, "_run_pe_subprocess_detailed") as mock_run:
+                result = pipeline._run_policyengine(rac_file)
+
+        assert result.score is None
+        assert mock_run.call_count == 0
+        assert any(
+            "row-specific zero case" in issue.lower() for issue in result.issues
+        )
+
     def test_pe_no_expected(self, pipeline, temp_dirs):
         """Tests without expected values are skipped."""
         rac_us, _ = temp_dirs
@@ -1957,6 +2053,25 @@ eligible_case:
         }
         assert tests[0]["expect"] == 17.25
 
+    def test_v2_unwraps_person_value_wrappers(self, pipeline):
+        content = """
+- name: singleton_person_value_case
+  period: 2025-04
+  input:
+    is_first_child:
+      person: 1
+      value: true
+  output:
+    uc_child_element_first_child_higher_amount:
+      person: 1
+      value: 339.00
+"""
+        tests = pipeline._extract_tests_from_rac_v2(content)
+
+        assert len(tests) == 1
+        assert tests[0]["inputs"] == {"is_first_child": True}
+        assert tests[0]["expect"] == 339.00
+
 
 # =========================================================================
 # _build_pe_situation
@@ -2208,7 +2323,7 @@ class TestBuildPeScenarioScript:
         )
         assert "'older'" in script
         assert "target_index = 1" in script
-        assert "would_claim_child_benefit': {2025: True}" in script
+        assert "would_claim_child_benefit': {'2025': True}" in script
 
     def test_uk_child_benefit_leaf_script_supports_eldest_child_name(self, pipeline):
         script = pipeline._build_pe_scenario_script(
@@ -2410,7 +2525,7 @@ class TestBuildPeScenarioScript:
             country="uk",
             rac_var="child_benefit_weekly_rate_other_case",
         )
-        assert "'age': {2025: 20}" in script
+        assert "'age': {'2025': 20}" in script
         assert "target_index = 0" in script
 
     def test_uk_child_benefit_explicit_false_child_and_qyp_use_adult_target(
@@ -2428,7 +2543,7 @@ class TestBuildPeScenarioScript:
             country="uk",
             rac_var="child_benefit_weekly_rate_b",
         )
-        assert "'age': {2025: 20}" in script
+        assert "'age': {'2025': 20}" in script
         assert "target_index = 0" in script
 
     def test_uk_pension_credit_couple_leaf_script_builds_couple_scenario(
@@ -2553,8 +2668,8 @@ class TestBuildPeScenarioScript:
             rac_var="scottish_child_payment_weekly_rate",
         )
         assert "from policyengine_uk import Simulation" in script
-        assert "'country': {2025: 'SCOTLAND'}" in script
-        assert "'universal_credit': {2025: 1.0}" in script
+        assert "'country': {'2025': 'SCOTLAND'}" in script
+        assert "'universal_credit': {'2025': 1.0}" in script
         assert "annual = sim.calculate('scottish_child_payment', int('2025'))" in script
         assert "val = float(annual[0]) / 52" in script
 
@@ -2572,7 +2687,7 @@ class TestBuildPeScenarioScript:
             country="uk",
             rac_var="scottish_child_payment_weekly_value",
         )
-        assert "'age': {2025: 17}" in script
+        assert "'age': {'2025': 17}" in script
 
     def test_uk_benefit_cap_single_london_leaf_script_builds_single_london_case(
         self, pipeline
@@ -2585,7 +2700,7 @@ class TestBuildPeScenarioScript:
             country="uk",
             rac_var="benefit_cap_single_claimant_greater_london_annual_limit",
         )
-        assert "'region': {2025: 'LONDON'}" in script
+        assert "'region': {'2025': 'LONDON'}" in script
         assert "'members': ['adult']" in script
         assert "if is_single and in_london and not has_child:" in script
         assert "val = float(annual[0])" in script
@@ -2601,7 +2716,7 @@ class TestBuildPeScenarioScript:
             country="uk",
             rac_var="benefit_cap_family_outside_london_annual_limit",
         )
-        assert "'region': {2025: 'NORTH_EAST'}" in script
+        assert "'region': {'2025': 'NORTH_EAST'}" in script
         assert "'spouse'" in script
         assert "'child'" in script
         assert "if not in_london and (not is_single or has_child):" in script
@@ -2625,7 +2740,7 @@ class TestBuildPeScenarioScript:
             country="uk",
             rac_var="benefit_cap_80A_2_b_amount",
         )
-        assert "'region': {2025: 'LONDON'}" in script
+        assert "'region': {'2025': 'LONDON'}" in script
         assert "'spouse'" in script
         assert "if in_london and (not is_single or has_child):" in script
 
@@ -2648,7 +2763,7 @@ class TestBuildPeScenarioScript:
             country="uk",
             rac_var="benefit_cap_80A_2_b_amount",
         )
-        assert "'region': {2025: 'LONDON'}" in script
+        assert "'region': {'2025': 'LONDON'}" in script
         assert "'spouse'" not in script
         assert "'child'" in script
         assert "is_single = True" in script
@@ -2688,7 +2803,7 @@ class TestBuildPeScenarioScript:
             country="uk",
             rac_var="benefit_cap_relevant_amount_80a_2_d",
         )
-        assert "'region': {2025: 'NORTH_EAST'}" in script
+        assert "'region': {'2025': 'NORTH_EAST'}" in script
         assert "'spouse'" in script
         assert "if not in_london and (not is_single or has_child):" in script
 
@@ -2708,7 +2823,7 @@ class TestBuildPeScenarioScript:
             country="uk",
             rac_var="benefit_cap_relevant_amount_80a_2_d",
         )
-        assert "'region': {2025: 'NORTH_EAST'}" in script
+        assert "'region': {'2025': 'NORTH_EAST'}" in script
         assert "'spouse'" not in script
         assert "'child'" not in script
         assert "is_single = True" in script
@@ -2730,7 +2845,7 @@ class TestBuildPeScenarioScript:
             country="uk",
             rac_var="benefit_cap_applicable_annual_limit_under_80A_2_c",
         )
-        assert "'region': {2025: 'NORTH_EAST'}" in script
+        assert "'region': {'2025': 'NORTH_EAST'}" in script
         assert "'spouse'" not in script
         assert "'child'" not in script
         assert "if is_single and not in_london and not has_child:" in script
@@ -2751,7 +2866,7 @@ class TestBuildPeScenarioScript:
             country="uk",
             rac_var="benefit_cap_single_claimant_greater_london_annual_limit",
         )
-        assert "'region': {2025: 'NORTH_EAST'}" in script
+        assert "'region': {'2025': 'NORTH_EAST'}" in script
         assert "'spouse'" in script
         assert "'child'" in script
 
@@ -3190,7 +3305,7 @@ class TestBuildPeUkAdditionalScenarios:
 
         assert "sim.calculate('uc_standard_allowance', int('2025'))" in script
         assert "'members': ['adult']" in script
-        assert "'age': {2025: 24}" in script
+        assert "'age': {'2025': 24}" in script
         assert "val = float(annual[0]) / 12" in script
 
     def test_uk_uc_child_first_higher_amount_script_builds_pre_limit_child_case(
@@ -3206,7 +3321,7 @@ class TestBuildPeUkAdditionalScenarios:
         )
 
         assert "sim.calculate('uc_individual_child_element', int('2025'))" in script
-        assert "'birth_year': {2025: 2015}" in script
+        assert "'birth_year': {'2025': 2015}" in script
         assert "target_index = 0" in script
         assert "val = float(annual[target_index]) / 12" in script
 
@@ -3223,9 +3338,9 @@ class TestBuildPeUkAdditionalScenarios:
         )
 
         assert "sim.calculate('WTC_lone_parent_element', int('2025'))" in script
-        assert "'working_tax_credit_reported': {2025: 1}" in script
-        assert "'weekly_hours': {2025: 16}" in script
-        assert "'child': {'age': {2025: 10}}" in script
+        assert "'working_tax_credit_reported': {'2025': 1}" in script
+        assert "'weekly_hours': {'2025': 16}" in script
+        assert "'child': {'age': {'2025': 10}}" in script
 
     def test_detects_us_by_default(self, pipeline, temp_dirs):
         rac_us, _ = temp_dirs

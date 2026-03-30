@@ -1758,6 +1758,13 @@ Available precedent files:
 - Use a descriptive legal variable name, not a path- or source-id-derived placeholder like `uksi_2013_...`.
 - For a one-row fixed-amount slice, do not invent a fresh `*_applies` helper or unrelated eligibility booleans unless the source text itself states them.
 - For a one-row fixed-amount slice, do not invent alternate zero-amount tests; prefer a base case and an effective-date boundary using the same grounded amount.
+- For a one-row fixed-amount slice, Do not emit `otherwise:`.
+- For a one-row fixed-amount slice, Do not emit `before YYYY-MM-DD: 0`.
+- For a one-row fixed-amount slice, Do not emit stray blocks like `from 0:`.
+- For a one-row fixed-amount slice, use exactly one grounded `from YYYY-MM-DD:` clause unless `./source.txt` itself states multiple grounded dates or amounts.
+- In `.rac.test` for a one-row fixed-amount slice, use boolean or fact-shaped helper inputs that mirror the row text.
+- Do not invent sample ages like `2`, `3`, `24`, or `25` just to witness a row condition; if the row says "aged under 25", prefer a helper like `claimant_aged_under_25`.
+- For a one-row fixed-amount slice with a single canonical subject, keep `.rac.test` outputs scalar instead of nested wrappers like `{person: 1, value: ...}`.
 """
     target_hint_guidance = ""
     if policyengine_rac_var_hint:

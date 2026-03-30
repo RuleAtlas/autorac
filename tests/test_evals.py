@@ -1064,6 +1064,12 @@ class TestEvalPrompt:
         assert "not a path- or source-id-derived placeholder" in prompt
         assert "do not invent a fresh `*_applies` helper" in prompt
         assert "do not invent alternate zero-amount tests" in prompt
+        assert "Do not emit `otherwise:`" in prompt
+        assert "Do not emit `before YYYY-MM-DD: 0`" in prompt
+        assert "Do not emit stray blocks like `from 0:`" in prompt
+        assert "use boolean or fact-shaped helper inputs" in prompt
+        assert "Do not invent sample ages like `2`, `3`, `24`, or `25`" in prompt
+        assert "keep `.rac.test` outputs scalar" in prompt
 
     def test_build_eval_prompt_includes_import_vs_local_helper_protocol(
         self, tmp_path
