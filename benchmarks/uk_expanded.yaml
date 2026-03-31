@@ -3,7 +3,7 @@ runners:
   - openai:gpt-5.4
 mode: cold
 gates:
-  min_cases: 25
+  min_cases: 29
   min_success_rate: 0.9
   min_compile_pass_rate: 0.9
   min_ci_pass_rate: 0.9
@@ -140,6 +140,38 @@ cases:
     oracle: policyengine
     policyengine_country: uk
     policyengine_rac_var_hint: uc_child_element_second_and_subsequent_child_amount
+
+  - kind: source
+    name: uc-disabled-child-element
+    source_id: uksi-2013-376-regulation-36-3-disabled-child
+    source_file: ./sources/uk/uc_child_element_disabled_2025.txt
+    oracle: policyengine
+    policyengine_country: uk
+    policyengine_rac_var_hint: uc_disabled_child_element_amount
+
+  - kind: source
+    name: uc-severely-disabled-child-element
+    source_id: uksi-2013-376-regulation-36-3-severely-disabled-child
+    source_file: ./sources/uk/uc_child_element_severely_disabled_2025.txt
+    oracle: policyengine
+    policyengine_country: uk
+    policyengine_rac_var_hint: uc_severely_disabled_child_element_amount
+
+  - kind: source
+    name: uc-work-allowance-with-housing
+    source_id: uksi-2013-376-regulation-22-work-allowance-with-housing
+    source_file: ./sources/uk/uc_work_allowance_with_housing_2025.txt
+    oracle: policyengine
+    policyengine_country: uk
+    policyengine_rac_var_hint: uc_work_allowance_with_housing_amount
+
+  - kind: source
+    name: uc-work-allowance-without-housing
+    source_id: uksi-2013-376-regulation-22-work-allowance-without-housing
+    source_file: ./sources/uk/uc_work_allowance_without_housing_2025.txt
+    oracle: policyengine
+    policyengine_country: uk
+    policyengine_rac_var_hint: uc_work_allowance_without_housing_amount
 
   - kind: source
     name: wtc-basic-element

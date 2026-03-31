@@ -3315,6 +3315,28 @@ class TestResolvePeVariable:
             == "uc_LCWRA_element"
         )
 
+    def test_resolves_uk_uc_disabled_child_element_amount(self, pipeline):
+        assert (
+            pipeline._resolve_pe_variable("uk", "uc_disabled_child_element_amount")
+            == "uc_individual_disabled_child_element"
+        )
+
+    def test_resolves_uk_uc_severely_disabled_child_element_amount(self, pipeline):
+        assert (
+            pipeline._resolve_pe_variable(
+                "uk", "uc_severely_disabled_child_element_amount"
+            )
+            == "uc_individual_severely_disabled_child_element"
+        )
+
+    def test_resolves_uk_uc_work_allowance_with_housing_amount(self, pipeline):
+        assert (
+            pipeline._resolve_pe_variable(
+                "uk", "uc_work_allowance_with_housing_amount"
+            )
+            == "uc_work_allowance"
+        )
+
     def test_resolves_uk_wtc_basic_element_amount(self, pipeline):
         assert (
             pipeline._resolve_pe_variable("uk", "wtc_basic_element_amount")
@@ -3428,6 +3450,71 @@ class TestBuildPeUkAdditionalScenarios:
         assert "'working_tax_credit_reported': {'2025': 1}" in script
         assert "'weekly_hours': {'2025': 16}" in script
         assert "'child': {'age': {'2025': 10}}" in script
+
+    def test_uk_uc_disabled_child_element_script_builds_disabled_child_case(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "uc_individual_disabled_child_element",
+            {"period": "2025-04-01"},
+            "2025",
+            158.76,
+            country="uk",
+            rac_var="uc_disabled_child_element_amount",
+        )
+
+        assert "sim.calculate('uc_individual_disabled_child_element', int('2025'))" in script
+        assert "'is_disabled_for_benefits': {'2025': True}" in script
+        assert "'members': ['child']" in script
+        assert "val = float(annual[0]) / 12" in script
+
+    def test_uk_uc_severely_disabled_child_element_script_builds_severe_case(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_scenario_script(
+            "uc_individual_severely_disabled_child_element",
+            {"period": "2025-04-01"},
+            "2025",
+            495.87,
+            country="uk",
+            rac_var="uc_severely_disabled_child_element_amount",
+        )
+
+        assert (
+            "sim.calculate('uc_individual_severely_disabled_child_element', int('2025'))"
+            in script
+        )
+        assert "'is_severely_disabled_for_benefits': {'2025': True}" in script
+        assert "val = float(annual[0]) / 12" in script
+
+    def test_uk_uc_work_allowance_script_builds_with_housing_case(self, pipeline):
+        script = pipeline._build_pe_scenario_script(
+            "uc_work_allowance",
+            {"period": "2025-04-01"},
+            "2025",
+            411.0,
+            country="uk",
+            rac_var="uc_work_allowance_with_housing_amount",
+        )
+
+        assert "sim.calculate('uc_work_allowance', int('2025'))" in script
+        assert "'uc_housing_costs_element': {'2025': 1}" in script
+        assert "'members': ['adult', 'child']" in script
+        assert "val = float(annual[0]) / 12" in script
+
+    def test_uk_uc_work_allowance_script_builds_without_housing_case(self, pipeline):
+        script = pipeline._build_pe_scenario_script(
+            "uc_work_allowance",
+            {"period": "2025-04-01"},
+            "2025",
+            684.0,
+            country="uk",
+            rac_var="uc_work_allowance_without_housing_amount",
+        )
+
+        assert "sim.calculate('uc_work_allowance', int('2025'))" in script
+        assert "'uc_housing_costs_element': {'2025': 0}" in script
+        assert "val = float(annual[0]) / 12" in script
 
     def test_uk_wtc_worker_element_script_builds_30_hour_case(self, pipeline):
         script = pipeline._build_pe_scenario_script(

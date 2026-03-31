@@ -2197,7 +2197,11 @@ print("BENCHMARK:" + json.dumps(result))
                 "uc_carer_element_amount": "uc_carer_element",
                 "uc_child_element_first_child_higher_amount": "uc_individual_child_element",
                 "uc_child_element_second_and_subsequent_child_amount": "uc_individual_child_element",
+                "uc_disabled_child_element_amount": "uc_individual_disabled_child_element",
+                "uc_severely_disabled_child_element_amount": "uc_individual_severely_disabled_child_element",
                 "uc_lcwra_element_amount": "uc_LCWRA_element",
+                "uc_work_allowance_with_housing_amount": "uc_work_allowance",
+                "uc_work_allowance_without_housing_amount": "uc_work_allowance",
                 "wtc_basic_element_amount": "WTC_basic_element",
                 "wtc_lone_parent_element_amount": "WTC_lone_parent_element",
                 "wtc_couple_element_amount": "WTC_couple_element",
@@ -2425,6 +2429,46 @@ print("BENCHMARK:" + json.dumps(result))
         ) and not rac_var_lower.endswith("_applies")
 
     @staticmethod
+    def _is_uk_uc_disabled_child_element_var(rac_var: str) -> bool:
+        rac_var_lower = rac_var.lower()
+        return (
+            any(
+                marker in rac_var_lower
+                for marker in (
+                    "uc_disabled_child_element",
+                    "uc_child_element_disabled",
+                    "universal_credit_disabled_child_element",
+                )
+            )
+            and "severe" not in rac_var_lower
+            and not rac_var_lower.endswith("_applies")
+        )
+
+    @staticmethod
+    def _is_uk_uc_severely_disabled_child_element_var(rac_var: str) -> bool:
+        rac_var_lower = rac_var.lower()
+        return any(
+            marker in rac_var_lower
+            for marker in (
+                "uc_severely_disabled_child_element",
+                "uc_child_element_severely_disabled",
+                "universal_credit_severely_disabled_child_element",
+            )
+        ) and not rac_var_lower.endswith("_applies")
+
+    @staticmethod
+    def _is_uk_uc_work_allowance_var(rac_var: str) -> bool:
+        rac_var_lower = rac_var.lower()
+        return (
+            (
+                "uc_work_allowance" in rac_var_lower
+                or "universal_credit_work_allowance" in rac_var_lower
+            )
+            and "eligible" not in rac_var_lower
+            and not rac_var_lower.endswith("_applies")
+        )
+
+    @staticmethod
     def _is_uk_wtc_basic_element_var(rac_var: str) -> bool:
         rac_var_lower = rac_var.lower()
         return "wtc_basic" in rac_var_lower or "working_tax_credit_basic_element" in rac_var_lower
@@ -2483,6 +2527,9 @@ print("BENCHMARK:" + json.dumps(result))
                 ValidatorPipeline._is_uk_uc_carer_element_var,
                 ValidatorPipeline._is_uk_uc_child_element_var,
                 ValidatorPipeline._is_uk_uc_lcwra_element_var,
+                ValidatorPipeline._is_uk_uc_disabled_child_element_var,
+                ValidatorPipeline._is_uk_uc_severely_disabled_child_element_var,
+                ValidatorPipeline._is_uk_uc_work_allowance_var,
                 ValidatorPipeline._is_uk_wtc_basic_element_var,
                 ValidatorPipeline._is_uk_wtc_lone_parent_element_var,
                 ValidatorPipeline._is_uk_wtc_couple_element_var,
@@ -2672,6 +2719,14 @@ print("BENCHMARK:" + json.dumps(result))
             return "uc_individual_child_element"
         if country == "uk" and self._is_uk_uc_lcwra_element_var(rac_var_lower):
             return "uc_LCWRA_element"
+        if country == "uk" and self._is_uk_uc_disabled_child_element_var(rac_var_lower):
+            return "uc_individual_disabled_child_element"
+        if country == "uk" and self._is_uk_uc_severely_disabled_child_element_var(
+            rac_var_lower
+        ):
+            return "uc_individual_severely_disabled_child_element"
+        if country == "uk" and self._is_uk_uc_work_allowance_var(rac_var_lower):
+            return "uc_work_allowance"
         if country == "uk" and self._is_uk_wtc_basic_element_var(rac_var_lower):
             return "WTC_basic_element"
         if country == "uk" and self._is_uk_wtc_lone_parent_element_var(rac_var_lower):
@@ -2981,6 +3036,89 @@ sim = Simulation(situation=situation)
 annual = sim.calculate('uc_individual_child_element', int('{year}'))
 target_index = {target_index}
 val = float(annual[target_index]) / 12
+print(f'RESULT:{{val}}')
+"""
+
+        if pe_var == "uc_individual_disabled_child_element" and self._is_uk_uc_disabled_child_element_var(
+            rac_var_lower
+        ):
+            return f"""
+from policyengine_uk import Simulation
+
+situation = {{
+    'people': {{'child': {{'age': {{{year_key}: 6}}, 'is_disabled_for_benefits': {{{year_key}: True}}}}}},
+    'benunits': {{'benunit': {{'members': ['child']}}}},
+    'households': {{'household': {{'members': ['child']}}}},
+}}
+
+sim = Simulation(situation=situation)
+annual = sim.calculate('uc_individual_disabled_child_element', int('{year}'))
+val = float(annual[0]) / 12
+print(f'RESULT:{{val}}')
+"""
+
+        if pe_var == "uc_individual_severely_disabled_child_element" and self._is_uk_uc_severely_disabled_child_element_var(
+            rac_var_lower
+        ):
+            return f"""
+from policyengine_uk import Simulation
+
+situation = {{
+    'people': {{'child': {{'age': {{{year_key}: 6}}, 'is_severely_disabled_for_benefits': {{{year_key}: True}}, 'is_disabled_for_benefits': {{{year_key}: True}}}}}},
+    'benunits': {{'benunit': {{'members': ['child']}}}},
+    'households': {{'household': {{'members': ['child']}}}},
+}}
+
+sim = Simulation(situation=situation)
+annual = sim.calculate('uc_individual_severely_disabled_child_element', int('{year}'))
+val = float(annual[0]) / 12
+print(f'RESULT:{{val}}')
+"""
+
+        if pe_var == "uc_work_allowance" and self._is_uk_uc_work_allowance_var(
+            rac_var_lower
+        ):
+            explicit_with_housing = next(
+                (
+                    bool(value)
+                    for key, value in lowered.items()
+                    if "with_housing" in str(key).lower() and value is not None
+                ),
+                None,
+            )
+            explicit_without_housing = next(
+                (
+                    bool(value)
+                    for key, value in lowered.items()
+                    if "without_housing" in str(key).lower() and value is not None
+                ),
+                None,
+            )
+            if explicit_with_housing is not None:
+                with_housing = explicit_with_housing
+            elif explicit_without_housing is not None:
+                with_housing = not explicit_without_housing
+            elif "without_housing" in rac_var_lower:
+                with_housing = False
+            else:
+                with_housing = True
+            housing_costs_element = 1 if with_housing else 0
+
+            return f"""
+from policyengine_uk import Simulation
+
+situation = {{
+    'people': {{
+        'adult': {{'age': {{{year_key}: 30}}}},
+        'child': {{'age': {{{year_key}: 10}}}},
+    }},
+    'benunits': {{'benunit': {{'members': ['adult', 'child'], 'uc_housing_costs_element': {{{year_key}: {housing_costs_element}}}}}}},
+    'households': {{'household': {{'members': ['adult', 'child']}}}},
+}}
+
+sim = Simulation(situation=situation)
+annual = sim.calculate('uc_work_allowance', int('{year}'))
+val = float(annual[0]) / 12
 print(f'RESULT:{{val}}')
 """
 
