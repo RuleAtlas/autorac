@@ -346,6 +346,37 @@ class TestGeneratedBundleCleaning:
         assert "alternate_real_condition_single_status_varied" not in test_text
         assert "joint_claimants_where_either_is_aged_25_or_over" not in test_text
 
+    def test_materialize_eval_artifact_normalizes_non_slice_code_numeric_literals(
+        self, tmp_path
+    ):
+        output_file = (
+            tmp_path / "source" / "uksi-2013-376-regulation-80A-2025-04-01.rac"
+        )
+        llm_response = (
+            '"""\n'
+            "The applicable annual limit is £25,323 for joint claimants.\n"
+            '"""\n\n'
+            "regulation_80A_2_b_i_applicable_annual_limit:\n"
+            "    entity: Family\n"
+            "    period: Year\n"
+            "    dtype: Money\n"
+            "    from 2025-03-21:\n"
+            "        if is_joint_claimant and either_joint_claimant_resident_in_greater_london: 25,323\n"
+            "        else: 0\n"
+        )
+
+        wrote = _materialize_eval_artifact(llm_response, output_file)
+
+        assert wrote is True
+        artifact_text = output_file.read_text()
+        assert "£25,323" in artifact_text
+        code_text = artifact_text.split('"""', 2)[-1]
+        assert "25,323" not in code_text
+        assert (
+            "if is_joint_claimant and either_joint_claimant_resident_in_greater_london: 25323"
+            in artifact_text
+        )
+
     def test_can_include_policyengine_metrics_for_uk_artifact(self, tmp_path):
         rac_file = tmp_path / "source" / "uksi-2006-965-regulation-2.rac"
         rac_file.parent.mkdir(parents=True)

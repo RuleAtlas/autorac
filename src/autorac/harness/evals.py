@@ -2462,9 +2462,22 @@ def _normalize_comma_numeric_literals(content: str) -> str:
     )
 
 
+def _normalize_rac_code_numeric_literals(content: str) -> str:
+    """Strip thousands separators from executable RAC code, preserving docstring prose."""
+    if content.startswith('"""'):
+        closing_index = content.find('"""', 3)
+        if closing_index != -1:
+            code_start = closing_index + 3
+            return (
+                content[:code_start]
+                + _normalize_comma_numeric_literals(content[code_start:])
+            )
+    return _normalize_comma_numeric_literals(content)
+
+
 def _normalize_single_amount_row_rac_content(content: str) -> str:
     """Collapse one-row conditional encodings into grounded constants."""
-    normalized = _normalize_comma_numeric_literals(content)
+    normalized = _normalize_rac_code_numeric_literals(content)
     normalized = re.sub(
         r"(^\s*from\s+\d{4}-\d{2}-\d{2}:\s*)if\b.+?:\s*(-?\d+(?:\.\d+)?)\s*(?:else:\s*0(?:\.0+)?)?\s*$",
         lambda match: f"{match.group(1)}{match.group(2)}",
@@ -2613,6 +2626,10 @@ def _materialize_eval_artifact(
                         rac_content=bundle.get(expected_path.name),
                         source_text=source_text,
                     )
+            elif target_path == expected_path:
+                content = _normalize_rac_code_numeric_literals(content)
+            elif target_path == expected_test_path:
+                content = _normalize_comma_numeric_literals(content)
             target_path.parent.mkdir(parents=True, exist_ok=True)
             target_path.write_text(content)
             if target_path == expected_path:
@@ -2625,6 +2642,8 @@ def _materialize_eval_artifact(
         return False
     if single_amount_table_slice:
         rac_content = _normalize_single_amount_row_rac_content(rac_content)
+    else:
+        rac_content = _normalize_rac_code_numeric_literals(rac_content)
 
     expected_path.parent.mkdir(parents=True, exist_ok=True)
     expected_path.write_text(rac_content)
