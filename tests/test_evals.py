@@ -1151,6 +1151,28 @@ class TestEvalPrompt:
         assert "`if condition: value else: other_value`" in prompt
         assert "Do not use YAML-style `if:` / `then:` / `else:` blocks." in prompt
 
+    def test_build_eval_prompt_requires_decimal_ratios_for_rate_dtype(self, tmp_path):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/regulation/7",
+            runner=parse_runner_spec("codex:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text="The percentage prescribed is 60 per cent.",
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2002/1792/regulation/7",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2002-1792-regulation-7.rac",
+            include_tests=True,
+        )
+
+        assert "For `dtype: Rate`, encode percentages as decimal ratios like `0.60` or `0.40`, never as `%` literals." in prompt
+
     def test_build_eval_prompt_for_uk_leaf_prefers_person_over_family_constant(
         self, tmp_path
     ):

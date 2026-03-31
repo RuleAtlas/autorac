@@ -295,7 +295,7 @@ def extract_numbers_from_text(text: str) -> set[float]:
             numbers.add(float(raw))
 
     for match in re.finditer(
-        r"(\d+(?:\.\d+)?)\s+(?:percent|per\s*centum)", text, re.IGNORECASE
+        r"(\d+(?:\.\d+)?)\s+(?:percent|per\s*cent(?:um)?)", text, re.IGNORECASE
     ):
         with contextlib.suppress(ValueError):
             numbers.add(float(match.group(1)) / 100)

@@ -172,6 +172,14 @@ class TestExtractNumbersFromText:
         assert 14.0 in numbers
         assert 5.0 in numbers
 
+    def test_extracts_per_cent_as_decimal_rate(self):
+        numbers = extract_numbers_from_text(
+            "The percentage prescribed is 60 per cent and amount B is 40 percent."
+        )
+
+        assert 0.6 in numbers
+        assert 0.4 in numbers
+
 
 class TestExtractTestsFromRacV2ListFormat:
     def test_extracts_top_level_list_format(self, pipeline):
