@@ -2499,6 +2499,7 @@ def _normalize_single_amount_row_rac_content(content: str) -> str:
 def _normalize_single_amount_row_test_content(
     content: str,
     rac_content: str | None = None,
+    source_text: str | None = None,
 ) -> str:
     """Drop alternate-branch tests for one-row fixed-amount slices."""
     normalized = _normalize_comma_numeric_literals(content)
@@ -2513,6 +2514,20 @@ def _normalize_single_amount_row_test_content(
     annual_period = bool(
         rac_content and re.search(r"^\s*period:\s*Year\s*$", rac_content, flags=re.MULTILINE)
     )
+    annual_base_period = None
+    if annual_period:
+        if rac_content and (
+            from_match := re.search(r"\bfrom\s+(\d{4})-\d{2}-\d{2}:", rac_content)
+        ):
+            annual_base_period = int(from_match.group(1))
+        elif source_text and (
+            source_match := re.search(
+                r"\b(?:text|current text)\s+valid\s+from\s+(\d{4})-\d{2}-\d{2}\b",
+                source_text,
+                flags=re.IGNORECASE,
+            )
+        ):
+            annual_base_period = int(source_match.group(1))
 
     def should_keep(case_name: str | None) -> bool:
         if not case_name:
@@ -2528,6 +2543,8 @@ def _normalize_single_amount_row_test_content(
         if not isinstance(case, dict):
             return case
         normalized_case = dict(case)
+        if annual_period and annual_base_period is not None and "period" not in normalized_case:
+            normalized_case["period"] = annual_base_period
         output = normalized_case.get("output")
         if isinstance(output, dict) and len(output) > 1:
             numeric_output = {
@@ -2594,6 +2611,7 @@ def _materialize_eval_artifact(
                     content = _normalize_single_amount_row_test_content(
                         content,
                         rac_content=bundle.get(expected_path.name),
+                        source_text=source_text,
                     )
             target_path.parent.mkdir(parents=True, exist_ok=True)
             target_path.write_text(content)
