@@ -357,3 +357,33 @@ cases:
     oracle: policyengine
     policyengine_country: uk
     policyengine_rac_var_hint: wtc_severely_disabled_element_amount
+
+  - kind: source
+    name: pension-credit-special-employment-disregard
+    source_id: uksi-2002-1792-schedule-VI-paragraph-2
+    source_file: ./sources/uk/pc_special_employment_disregard_2025.txt
+    oracle: none
+
+  - kind: source
+    name: pension-credit-special-employment-top-up-single
+    source_id: uksi-2002-1792-schedule-VI-paragraph-2A
+    source_file: ./sources/uk/pc_special_employment_top_up_single_2025.txt
+    oracle: none
+
+  - kind: source
+    name: pension-credit-special-employment-top-up-couple
+    source_id: uksi-2002-1792-schedule-VI-paragraph-2B
+    source_file: ./sources/uk/pc_special_employment_top_up_couple_2025.txt
+    oracle: none
+
+  - kind: source
+    name: pension-credit-carer-earnings-disregard
+    source_id: uksi-2002-1792-schedule-VI-paragraph-3
+    source_file: ./sources/uk/pc_carer_earnings_disregard_2025.txt
+    oracle: none
+
+  - kind: source
+    name: pension-credit-couple-shared-maximum-disregard
+    source_id: uksi-2002-1792-schedule-VI-paragraph-4A-2
+    source_file: ./sources/uk/pc_couple_shared_maximum_disregard_2025.txt
+    oracle: none
