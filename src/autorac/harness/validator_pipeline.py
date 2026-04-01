@@ -979,6 +979,8 @@ class ValidatorPipeline:
             issues.extend(self._check_embedded_scalar_literals(rac_file))
         with contextlib.suppress(Exception):
             issues.extend(self._check_decomposed_date_scalars(rac_file))
+        with contextlib.suppress(Exception):
+            issues.extend(self._check_placeholder_fact_variables(rac_file))
 
         advisories: list[str] = []
         with contextlib.suppress(Exception):
@@ -1152,6 +1154,33 @@ class ValidatorPipeline:
             )
         return issues
 
+    def _check_placeholder_fact_variables(self, rac_file: Path) -> list[str]:
+        """Flag local factual predicates encoded as constant/deferred placeholders."""
+        content = rac_file.read_text()
+        source_text = extract_embedded_source_text(content)
+        if not source_text:
+            return []
+
+        issues: list[str] = []
+        for block in self._extract_definition_blocks(content):
+            if block["dtype"] != "Boolean":
+                continue
+            if block["imports"]:
+                continue
+
+            status = str(block["status"] or "").lower()
+            constant_boolean = bool(block["constant_boolean"])
+            if not (constant_boolean or status == "deferred"):
+                continue
+
+            issues.append(
+                "Placeholder fact variable: "
+                f"{block['name']} line {block['line']} is a source-stated factual predicate "
+                f"but is encoded as {'a constant boolean' if constant_boolean else '`status: deferred`'}; "
+                "expose it as a plain fact-shaped input or import a canonical definition instead"
+            )
+        return issues
+
     def _check_embedded_scalar_literals(self, rac_file: Path) -> list[str]:
         """Flag substantive scalar literals embedded inside formulas."""
         issues: list[str] = []
@@ -1202,6 +1231,74 @@ class ValidatorPipeline:
                     "semantic instead of splitting them into year/month/day variables"
                 )
         return issues
+
+    def _extract_definition_blocks(self, content: str) -> list[dict[str, object]]:
+        """Extract simple summaries of top-level RAC definition blocks."""
+        lines = content.splitlines()
+        blocks: list[dict[str, object]] = []
+        current: dict[str, object] | None = None
+        current_lines: list[str] = []
+
+        def flush() -> None:
+            nonlocal current, current_lines
+            if current is None:
+                return
+            current["imports"] = self._extract_import_paths("\n".join(current_lines))
+            current["dtype"] = self._extract_block_metadata(current_lines, "dtype")
+            current["status"] = self._extract_block_metadata(current_lines, "status")
+            current["constant_boolean"] = self._extract_constant_boolean_body(
+                current_lines
+            )
+            blocks.append(current)
+            current = None
+            current_lines = []
+
+        for line_number, line in enumerate(lines, start=1):
+            match = re.match(r"^([A-Za-z_]\w*):\s*$", line)
+            if match and match.group(1) not in _DEFINED_SYMBOL_METADATA_KEYS:
+                flush()
+                current = {"name": match.group(1), "line": line_number}
+                continue
+            if current is not None:
+                current_lines.append(line)
+
+        flush()
+        return blocks
+
+    def _extract_block_metadata(self, body_lines: list[str], key: str) -> str | None:
+        """Return a simple scalar metadata value from one definition block."""
+        pattern = re.compile(rf"^\s+{re.escape(key)}:\s*(.+?)\s*$")
+        for line in body_lines:
+            match = pattern.match(line)
+            if match:
+                return match.group(1).strip().strip('"').strip("'")
+        return None
+
+    def _extract_constant_boolean_body(self, body_lines: list[str]) -> bool:
+        """Return True when a `from` block body is exactly `true` or `false`."""
+        in_from = False
+        from_indent = 0
+        expr_lines: list[str] = []
+
+        for line in body_lines:
+            from_match = re.match(r"^(\s+)from\s+\d{4}-\d{2}-\d{2}:\s*$", line)
+            if from_match:
+                in_from = True
+                from_indent = len(from_match.group(1))
+                expr_lines = []
+                continue
+
+            if not in_from:
+                continue
+            if not line.strip():
+                continue
+
+            indent = len(line) - len(line.lstrip())
+            if indent <= from_indent:
+                break
+            expr_lines.append(line.strip())
+
+        return len(expr_lines) == 1 and expr_lines[0].lower() in {"true", "false"}
 
     def _collect_embedded_scalar_literals(
         self,

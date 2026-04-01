@@ -1177,6 +1177,101 @@ savings_credit_condition:
 
         assert not any("Defined term import missing" in issue for issue in result.issues)
 
+    def test_ci_rejects_constant_placeholder_fact_variables(self, pipeline):
+        """CI should reject source-derived fact variables encoded as constant booleans."""
+        rac_file = pipeline.rac_us_path / "uk" / "leaf.rac"
+        rac_file.parent.mkdir(parents=True, exist_ok=True)
+        rac_file.write_text(
+            '''
+"""
+A person who is a member of a mixed-age couple is not entitled to a savings credit unless one of the members of the couple has been awarded a savings credit with effect from a day before 6th April 2016.
+"""
+
+status: partial
+
+is_member_of_mixed_age_couple:
+    imports:
+        - legislation/ukpga/2002/16/section/3ZA/3#is_member_of_mixed_age_couple
+    entity: Person
+    period: Day
+    dtype: Boolean
+    from 2025-03-21:
+        is_member_of_mixed_age_couple
+
+one_member_of_the_couple_has_been_awarded_savings_credit:
+    entity: Person
+    period: Day
+    dtype: Boolean
+    from 2025-03-21:
+        false
+'''
+        )
+
+        with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                Mock(
+                    stdout="============================================================\nTests: 0  Passed: 0  Failed: 0\nNo tests found.\n",
+                    stderr="",
+                    returncode=0,
+                ),
+                Mock(
+                    stdout="Checked 1 .rac files\n\nAll files pass validation\n",
+                    stderr="",
+                    returncode=0,
+                ),
+            ]
+            result = pipeline._run_ci(rac_file)
+
+        assert result.passed is False
+        assert any("Placeholder fact variable" in issue for issue in result.issues)
+
+    def test_ci_rejects_deferred_placeholder_fact_variables(self, pipeline):
+        """CI should reject source-derived fact variables encoded as deferred placeholders."""
+        rac_file = pipeline.rac_us_path / "uk" / "leaf.rac"
+        rac_file.parent.mkdir(parents=True, exist_ok=True)
+        rac_file.write_text(
+            '''
+"""
+A person who is a member of a mixed-age couple is not entitled to a savings credit unless one of the members of the couple remained entitled to a savings credit at all times since the beginning of 6th April 2016.
+"""
+
+status: partial
+
+is_member_of_mixed_age_couple:
+    imports:
+        - legislation/ukpga/2002/16/section/3ZA/3#is_member_of_mixed_age_couple
+    entity: Person
+    period: Day
+    dtype: Boolean
+    from 2025-03-21:
+        is_member_of_mixed_age_couple
+
+one_member_of_couple_remained_entitled_to_savings_credit_since_beginning_of_6th_april_2016:
+    entity: Person
+    period: Day
+    dtype: Boolean
+    status: deferred
+'''
+        )
+
+        with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                Mock(
+                    stdout="============================================================\nTests: 0  Passed: 0  Failed: 0\nNo tests found.\n",
+                    stderr="",
+                    returncode=0,
+                ),
+                Mock(
+                    stdout="Checked 1 .rac files\n\nAll files pass validation\n",
+                    stderr="",
+                    returncode=0,
+                ),
+            ]
+            result = pipeline._run_ci(rac_file)
+
+        assert result.passed is False
+        assert any("Placeholder fact variable" in issue for issue in result.issues)
+
     def test_ci_adds_non_blocking_shared_concept_advisory(self, pipeline):
         """CI emits advisory text when a nearby file already defines the same symbol."""
         sibling = pipeline.rac_us_path / "26" / "24" / "b.rac"

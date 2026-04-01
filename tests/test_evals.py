@@ -1761,6 +1761,8 @@ class TestEvalPrompt:
         assert "Exact RAC import syntax for a resolved definition:" in prompt
         assert "imports:" in prompt
         assert "Do not replace that import with a local deferred stub" in prompt
+        assert "Do not encode such local factual predicates as placeholder constants like `true` or `false`." in prompt
+        assert "Do not encode such local factual predicates as `status: deferred`" in prompt
 
     def test_build_eval_prompt_includes_import_vs_local_helper_protocol(
         self, tmp_path

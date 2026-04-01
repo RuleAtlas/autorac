@@ -2068,6 +2068,9 @@ Rules:
 - If the source text only implies a shared concept, import an existing canonical concept only when one is actually present in the workspace; otherwise keep the helper local to this leaf.
 - For isolated amount/rate leaves that cite same-instrument conditions or exceptions, do not fabricate sibling-file imports just because the text mentions another paragraph or schedule test. Model those cited conditions as local booleans or fact-shaped inputs unless the exact canonical import file is already present in this workspace.
 - If no resolved definition file or copied precedent file shows you the import syntax, do not guess. Keep cited same-instrument conditions local instead of inventing `import` statements or `imports:` blocks.
+- When the source states factual predicates that this leaf depends on, expose those predicates as plain fact-shaped inputs (`entity`, `period`, `dtype`) unless they are imported from a canonical definition.
+- Do not encode such local factual predicates as placeholder constants like `true` or `false`.
+- Do not encode such local factual predicates as `status: deferred`; if they are not imported, leave them as plain input stubs instead.
 - Do not invent schema keys like `namespace:`, `parameter`, `variable`, or `rule:`.
 {schema_rules}{uk_guidance}{single_amount_row_guidance}{target_hint_guidance}
 - Prefer standard RAC blocks shaped like:
