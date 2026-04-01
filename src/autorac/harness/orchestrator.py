@@ -43,6 +43,7 @@ from autorac.prompts.validator import VALIDATOR_PROMPT
 from autorac.statute import find_citation_text, parse_usc_citation
 
 from .backends import parse_claude_cli_json_output
+from .dependency_stubs import build_registered_stub_content, find_registered_stub_specs
 from .encoding_db import EncodingDB, TokenUsage
 from .observability import emit_agent_run, extract_reasoning_entries
 from .pricing import estimate_usage_cost_usd
@@ -2190,7 +2191,12 @@ Read any .rac file for reference on style and patterns."""
         for expected_path, vars_list in by_file.items():
             import_path = vars_list[0][0]
             var_names = [v[1] for v in vars_list]
-            citation = self._citation_from_path(import_path)
+            registered_specs = find_registered_stub_specs(import_path, var_names)
+            citation = (
+                registered_specs[0].citation
+                if registered_specs
+                else self._citation_from_path(import_path)
+            )
 
             if expected_path.exists():
                 message = f"Skipping stub generation for existing file: {expected_path}"
@@ -2214,6 +2220,20 @@ Read any .rac file for reference on style and patterns."""
                 continue
 
             print(f"  Creating stub for {citation}: {', '.join(var_names)}", flush=True)
+
+            if registered_specs:
+                expected_path.parent.mkdir(parents=True, exist_ok=True)
+                expected_path.write_text(build_registered_stub_content(registered_specs))
+                created.append(expected_path)
+                print(f"    Wrote registered stub: {expected_path}", flush=True)
+                if session_id:
+                    self._log_artifact_provenance_records(
+                        session_id,
+                        [expected_path],
+                        Phase.RESOLVE_EXTERNALS,
+                        fallback_source_text=citation,
+                    )
+                continue
 
             # Fetch statute text
             statute_text = self._fetch_statute_text(citation)

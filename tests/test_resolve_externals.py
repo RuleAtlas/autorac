@@ -219,6 +219,38 @@ class TestResolveExternalDependencies:
         assert existing_target.read_text().startswith("# 26 USC 21(b)")
         mock_run.assert_not_called()
 
+    def test_uses_registered_stub_spec_for_known_definition_import(
+        self, orchestrator, dir_21
+    ):
+        """Known canonical definition imports should use the shared stub registry, not LLM generation."""
+        (dir_21 / "a.rac").write_text(
+            "x:\n"
+            "    imports:\n"
+            "        - legislation/ukpga/2002/16/section/3ZA/3#is_member_of_mixed_age_couple\n"
+        )
+
+        with (
+            patch.object(
+                orchestrator,
+                "_run_agent",
+                new_callable=AsyncMock,
+            ) as mock_run,
+            patch.object(orchestrator, "_fetch_statute_text") as mock_fetch,
+        ):
+            result = asyncio.run(orchestrator._resolve_external_dependencies(dir_21))
+
+        assert len(result) == 1
+        assert result[0].exists()
+        content = result[0].read_text()
+        assert "status: stub" in content
+        assert (
+            "stub_for: legislation/ukpga/2002/16/section/3ZA/3#is_member_of_mixed_age_couple"
+            in content
+        )
+        assert "is_member_of_mixed_age_couple:" in content
+        mock_run.assert_not_called()
+        mock_fetch.assert_not_called()
+
 
 class TestPhaseEnum:
     def test_resolve_externals_phase_exists(self):

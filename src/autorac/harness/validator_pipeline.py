@@ -33,6 +33,7 @@ import yaml
 
 from autorac.constants import REVIEWER_CLI_MODEL
 
+from .dependency_stubs import resolve_defined_terms_from_text
 from .encoding_db import EncodingDB, ReviewResult, ReviewResults
 
 
@@ -215,18 +216,6 @@ class NamedScalarOccurrence:
     value: float
 
 
-@dataclass(frozen=True)
-class ResolvedDefinedTerm:
-    """One canonical legal term resolved to an import target."""
-
-    term: str
-    import_target: str
-    symbol: str
-    citation: str
-    entity: str
-    period: str
-    dtype: str
-    label: str
 _PE_UNSUPPORTED_ERROR_PATTERNS = (
     re.compile(r"ParameterNotFoundError"),
     re.compile(r"VariableNotFoundError"),
@@ -236,25 +225,6 @@ _DEFINITION_CROSS_REFERENCE_PATTERN = re.compile(
     r"(?:as defined in|defined in|meaning given in|within the meaning of|described in)\s+"
     r"section\s+([0-9A-Za-z.-]+(?:\([^)]+\))*)",
     re.IGNORECASE,
-)
-_DEFINED_TERM_PATTERNS: tuple[tuple[re.Pattern[str], ResolvedDefinedTerm], ...] = (
-    (
-        re.compile(r"\bmixed-age couple\b", re.IGNORECASE),
-        ResolvedDefinedTerm(
-            term="mixed-age couple",
-            import_target="legislation/ukpga/2002/16/section/3ZA/3#is_member_of_mixed_age_couple",
-            symbol="is_member_of_mixed_age_couple",
-            citation="State Pension Credit Act 2002 section 3ZA(3)",
-            entity="Person",
-            period="Day",
-            dtype="Boolean",
-            label=(
-                "`mixed-age couple` -> import "
-                "`legislation/ukpga/2002/16/section/3ZA/3#is_member_of_mixed_age_couple` "
-                "(State Pension Credit Act 2002 section 3ZA(3))"
-            ),
-        ),
-    ),
 )
 _DEFINED_SYMBOL_METADATA_KEYS = {
     "imports",
@@ -271,17 +241,6 @@ _DEFINED_SYMBOL_METADATA_KEYS = {
     "stub_for",
     "skip_reason",
 }
-
-
-def resolve_defined_terms_from_text(text: str) -> list[ResolvedDefinedTerm]:
-    """Resolve known legally-defined terms mentioned in source text."""
-    resolved: list[ResolvedDefinedTerm] = []
-    for pattern, term in _DEFINED_TERM_PATTERNS:
-        if pattern.search(text) and term not in resolved:
-            resolved.append(term)
-    return resolved
-
-
 def extract_grounding_values(content: str) -> list[tuple[int, str, float]]:
     """Extract grounded numeric values from RAC definitions, excluding formulas/tests."""
     values = []

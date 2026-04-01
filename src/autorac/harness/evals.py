@@ -28,11 +28,16 @@ from autorac.statute import (
     parse_usc_citation,
 )
 
+from .dependency_stubs import (
+    ResolvedDefinedTerm,
+    import_target_to_relative_rac_path,
+    materialize_registered_stub,
+    resolve_defined_terms_from_text,
+)
 from .encoding_db import TokenUsage
 from .observability import emit_eval_result, extract_reasoning_output_tokens
 from .pricing import estimate_usage_cost_usd
 from .validator_pipeline import (
-    ResolvedDefinedTerm,
     ValidationResult,
     ValidatorPipeline,
     extract_embedded_source_text,
@@ -40,7 +45,6 @@ from .validator_pipeline import (
     extract_named_scalar_occurrences,
     extract_numbers_from_text,
     extract_numeric_occurrences_from_text,
-    resolve_defined_terms_from_text,
 )
 
 EvalMode = Literal["cold", "repo-augmented"]
@@ -1494,30 +1498,6 @@ def prepare_eval_workspace(
     )
 
 
-def _import_target_to_relative_rac_path(import_target: str) -> Path:
-    """Convert an import target like legislation/...#name into a .rac path."""
-    normalized = import_target.strip().strip('"').strip("'")
-    normalized = normalized.split("#", 1)[0]
-    if normalized.endswith(".rac"):
-        return Path(normalized)
-    return Path(f"{normalized}.rac")
-
-
-def _build_resolved_definition_stub_content(resolved_term: ResolvedDefinedTerm) -> str:
-    """Return a compile-friendly stub file for one resolved legal term."""
-    return (
-        f'"""\nCanonical definition stub for `{resolved_term.term}`.\n'
-        f"Resolved to {resolved_term.citation}.\n"
-        '"""\n\n'
-        "status: stub\n\n"
-        f"{resolved_term.symbol}:\n"
-        f"    stub_for: {resolved_term.import_target}\n"
-        f"    entity: {resolved_term.entity}\n"
-        f"    period: {resolved_term.period}\n"
-        f"    dtype: {resolved_term.dtype}\n"
-    )
-
-
 def _materialize_resolved_definition_stub(
     *,
     context_root: Path,
@@ -1525,12 +1505,14 @@ def _materialize_resolved_definition_stub(
     workspace_root: Path,
 ) -> EvalContextFile:
     """Write one resolved definition stub into the eval workspace context."""
-    relative_target = Path("context") / _import_target_to_relative_rac_path(
+    relative_target = Path("context") / import_target_to_relative_rac_path(
         resolved_term.import_target
     )
-    workspace_path = workspace_root / relative_target
-    workspace_path.parent.mkdir(parents=True, exist_ok=True)
-    workspace_path.write_text(_build_resolved_definition_stub_content(resolved_term))
+    materialize_registered_stub(
+        workspace_root,
+        [resolved_term],
+        prefix=Path("context"),
+    )
     return EvalContextFile(
         source_path=resolved_term.citation,
         workspace_path=str(relative_target),
