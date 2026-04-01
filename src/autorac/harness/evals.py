@@ -389,6 +389,103 @@ def _direct_akn_child_sections(section: ET.Element) -> list[ET.Element]:
     return [child for child in list(section) if _is_akn_container(child)]
 
 
+def _akn_parent_map(root: ET.Element) -> dict[ET.Element, ET.Element]:
+    return {child: parent for parent in root.iter() for child in list(parent)}
+
+
+def _akn_section_own_text(section: ET.Element) -> str:
+    parts: list[str] = []
+    title = _akn_title(section)
+    if title:
+        parts.append(title)
+    for tag in ("intro", "content", "wrapUp"):
+        node = section.find(f"akn:{tag}", AKN_NS)
+        if node is not None:
+            _append_akn_content_block_text(node, parts)
+    return "\n\n".join(part for part in parts if part).strip()
+
+
+def _shared_single_numeric_sibling_eids(akn_file: Path, section_eid: str) -> list[str]:
+    tree = ET.parse(akn_file)
+    root = tree.getroot()
+    section = _find_akn_section(root, section_eid)
+    target_children = _direct_akn_child_sections(section)
+    if target_children:
+        return []
+
+    parent = _akn_parent_map(root).get(section)
+    if parent is None or not _is_akn_container(parent):
+        return []
+
+    siblings = [
+        child
+        for child in _direct_akn_child_sections(parent)
+        if not _direct_akn_child_sections(child)
+    ]
+    if len(siblings) < 2:
+        return []
+
+    signatures: dict[str, list[str]] = {}
+    target_signature: str | None = None
+    for sibling in siblings:
+        numbers = {
+            round(value, 9)
+            for value in extract_numbers_from_text(_akn_section_own_text(sibling))
+        }
+        for value in sorted(numbers):
+            scaled = round(value * 100, 9)
+            if value <= 1 and scaled in numbers:
+                numbers.discard(scaled)
+        if len(numbers) != 1:
+            continue
+        signature = f"{next(iter(numbers)):.9f}"
+        sibling_eid = sibling.get("eId") or ""
+        signatures.setdefault(signature, []).append(sibling_eid)
+        if sibling is section:
+            target_signature = signature
+
+    if target_signature is None:
+        return []
+    matching = sorted(eid for eid in signatures.get(target_signature, []) if eid)
+    if len(matching) < 2:
+        return []
+    return matching
+
+
+def _validate_uk_shared_scalar_sibling_sets(
+    manifest: EvalSuiteManifest,
+    output_root: Path,
+) -> None:
+    cases_by_source: dict[str, list[EvalSuiteCase]] = {}
+    for case in manifest.cases:
+        if case.kind != "uk_legislation" or not case.source_ref or not case.section_eid:
+            continue
+        cases_by_source.setdefault(case.source_ref, []).append(case)
+
+    for source_ref, cases in cases_by_source.items():
+        fetched = _fetch_legislation_gov_uk_document(
+            source_ref,
+            output_root,
+            fetch_cache_root=output_root,
+        )
+        selected_eids = {case.section_eid for case in cases if case.section_eid}
+        for case in cases:
+            sibling_eids = _shared_single_numeric_sibling_eids(
+                fetched.akn_file,
+                case.section_eid or "",
+            )
+            if not sibling_eids:
+                continue
+            missing = [eid for eid in sibling_eids if eid not in selected_eids]
+            if not missing:
+                continue
+            raise ValueError(
+                f"UK legislation case '{case.name}' targets {case.section_eid}, which is part of "
+                f"a repeated-scalar sibling set under the same parent. Include the full sibling set: "
+                f"{', '.join(sibling_eids)}. Missing: {', '.join(missing)}."
+            )
+
+
 def _find_primary_akn_section_eid(akn_file: Path) -> str:
     """Pick the sole top-level AKN content node from a document-level source."""
     tree = ET.parse(akn_file)
@@ -924,6 +1021,7 @@ def run_eval_suite(
     resolved_runners = runner_specs or manifest.runners
     parsed_runners = [parse_runner_spec(spec) for spec in resolved_runners]
     results: list[EvalResult] = []
+    _validate_uk_shared_scalar_sibling_sets(manifest, Path(output_root))
 
     for index, case in enumerate(manifest.cases, start=1):
         case_output_root = Path(output_root) / f"{index:02d}-{_slugify(case.name)}"

@@ -5,12 +5,14 @@ import subprocess
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import pytest
 import requests
 
 from autorac.harness.evals import (
     EvalArtifactMetrics,
     EvalReadinessGates,
     EvalResult,
+    FetchedLegislationGovUkDocument,
     GroundingMetric,
     _build_eval_prompt,
     _clean_generated_file_content,
@@ -1724,6 +1726,136 @@ class TestOpenAIEvalRequest:
 
 
 class TestEvalSuiteManifest:
+    def test_run_eval_suite_rejects_incomplete_repeated_scalar_sibling_set(
+        self, tmp_path
+    ):
+        akn_file = tmp_path / "source.akn"
+        akn_file.write_text(
+            """
+<akomaNtoso xmlns="http://docs.oasis-open.org/legaldocml/ns/akn/3.0">
+  <act>
+    <body>
+      <section eId="regulation-22-1-b">
+        <num>(b)</num>
+        <intro><p>the following amount of earned income—</p></intro>
+        <level eId="regulation-22-1-b-i">
+          <num>(i)</num>
+          <content><p>in a case where no work allowance is specified, 55% of that earned income;</p></content>
+        </level>
+        <level eId="regulation-22-1-b-ii">
+          <num>(ii)</num>
+          <content><p>in any other case, 55% of the amount above the work allowance.</p></content>
+        </level>
+      </section>
+    </body>
+  </act>
+</akomaNtoso>
+            """.strip()
+        )
+        clml_file = tmp_path / "source.xml"
+        clml_file.write_text("<Legislation/>")
+        manifest_file = tmp_path / "suite.yaml"
+        manifest_file.write_text(
+            """
+name: UK taper
+runners:
+  - claude:opus
+cases:
+  - kind: uk_legislation
+    name: taper-with-work-allowance
+    source_ref: /uksi/2013/376/2025-04-07
+    section_eid: regulation-22-1-b-ii
+            """.strip()
+        )
+        manifest = load_eval_suite_manifest(manifest_file)
+
+        with patch(
+            "autorac.harness.evals._fetch_legislation_gov_uk_document",
+            return_value=FetchedLegislationGovUkDocument(
+                source_id="uksi/2013/376/2025-04-07",
+                content_url="https://www.legislation.gov.uk/uksi/2013/376/2025-04-07",
+                akn_file=akn_file,
+                clml_file=clml_file,
+            ),
+        ):
+            with pytest.raises(ValueError, match="repeated-scalar sibling set"):
+                run_eval_suite(
+                    manifest=manifest,
+                    output_root=tmp_path / "out",
+                    rac_path=tmp_path / "rac",
+                    atlas_path=None,
+                )
+
+    def test_run_eval_suite_allows_complete_repeated_scalar_sibling_set(
+        self, tmp_path
+    ):
+        akn_file = tmp_path / "source.akn"
+        akn_file.write_text(
+            """
+<akomaNtoso xmlns="http://docs.oasis-open.org/legaldocml/ns/akn/3.0">
+  <act>
+    <body>
+      <section eId="regulation-22-1-b">
+        <num>(b)</num>
+        <intro><p>the following amount of earned income—</p></intro>
+        <level eId="regulation-22-1-b-i">
+          <num>(i)</num>
+          <content><p>in a case where no work allowance is specified, 55% of that earned income;</p></content>
+        </level>
+        <level eId="regulation-22-1-b-ii">
+          <num>(ii)</num>
+          <content><p>in any other case, 55% of the amount above the work allowance.</p></content>
+        </level>
+      </section>
+    </body>
+  </act>
+</akomaNtoso>
+            """.strip()
+        )
+        clml_file = tmp_path / "source.xml"
+        clml_file.write_text("<Legislation/>")
+        manifest_file = tmp_path / "suite.yaml"
+        manifest_file.write_text(
+            """
+name: UK taper
+runners:
+  - claude:opus
+cases:
+  - kind: uk_legislation
+    name: taper-no-work-allowance
+    source_ref: /uksi/2013/376/2025-04-07
+    section_eid: regulation-22-1-b-i
+  - kind: uk_legislation
+    name: taper-with-work-allowance
+    source_ref: /uksi/2013/376/2025-04-07
+    section_eid: regulation-22-1-b-ii
+            """.strip()
+        )
+        manifest = load_eval_suite_manifest(manifest_file)
+        first = _fake_eval_result("claude-opus", "taper-no-work-allowance")
+        second = _fake_eval_result("claude-opus", "taper-with-work-allowance")
+
+        with patch(
+            "autorac.harness.evals._fetch_legislation_gov_uk_document",
+            return_value=FetchedLegislationGovUkDocument(
+                source_id="uksi/2013/376/2025-04-07",
+                content_url="https://www.legislation.gov.uk/uksi/2013/376/2025-04-07",
+                akn_file=akn_file,
+                clml_file=clml_file,
+            ),
+        ), patch(
+            "autorac.harness.evals.run_legislation_gov_uk_section_eval",
+            side_effect=[[first], [second]],
+        ):
+            results = run_eval_suite(
+                manifest=manifest,
+                output_root=tmp_path / "out",
+                rac_path=tmp_path / "rac",
+                atlas_path=None,
+            )
+
+        assert results == [first, second]
+
     def test_load_eval_suite_manifest_supports_uk_legislation_cases(self, tmp_path):
         manifest_file = tmp_path / "uk-readiness.yaml"
         manifest_file.write_text(
@@ -1829,6 +1961,9 @@ cases:
         source_result = _fake_eval_result("codex-gpt-5.4", "co-tanf-f")
 
         with patch(
+            "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+            return_value=None,
+        ), patch(
             "autorac.harness.evals.run_legislation_gov_uk_section_eval",
             return_value=[uk_result],
         ) as mock_uk, patch(
@@ -1865,6 +2000,9 @@ cases:
         uk_result = _fake_eval_result("openai-gpt-5.4", "uc-standard-allowance-single-young")
 
         with patch(
+            "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+            return_value=None,
+        ), patch(
             "autorac.harness.evals.run_legislation_gov_uk_section_eval",
             return_value=[uk_result],
         ) as mock_uk:
@@ -1899,6 +2037,9 @@ cases:
         output_root = tmp_path / "out"
 
         with patch(
+            "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+            return_value=None,
+        ), patch(
             "autorac.harness.evals.run_legislation_gov_uk_section_eval",
             return_value=[uk_result],
         ) as mock_uk:
@@ -1975,6 +2116,9 @@ cases:
         source_result = _fake_eval_result("openai-gpt-5.4", "co-tanf-f")
 
         with patch(
+            "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+            return_value=None,
+        ), patch(
             "autorac.harness.evals.run_legislation_gov_uk_section_eval",
             side_effect=RuntimeError("502 Server Error"),
         ), patch(
