@@ -272,6 +272,97 @@ baz_amount:
         ]
 
 
+class TestCIGates:
+    def test_ci_rejects_missing_tests(self, pipeline):
+        rac_file = pipeline.rac_us_path / "uk" / "leaf.rac"
+        rac_file.parent.mkdir(parents=True, exist_ok=True)
+        rac_file.write_text(
+            '''
+"""
+Dummy source text.
+"""
+
+status: encoded
+
+dummy_output:
+    entity: Person
+    period: Year
+    dtype: Boolean
+    from 2025-01-01:
+        true
+'''
+        )
+
+        with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                Mock(
+                    stdout="============================================================\nTests: 0  Passed: 0  Failed: 0\nNo tests found.\n",
+                    stderr="",
+                    returncode=0,
+                ),
+                Mock(
+                    stdout="Checked 1 .rac files\n\nAll files pass validation\n",
+                    stderr="",
+                    returncode=0,
+                ),
+            ]
+            result = pipeline._run_ci(rac_file)
+
+        assert result.passed is False
+        assert "Test runner failed: No tests found." in result.issues
+
+    def test_ci_rejects_constant_exclusion_list_outputs(self, pipeline):
+        rac_file = pipeline.rac_us_path / "uk" / "leaf.rac"
+        rac_file.parent.mkdir(parents=True, exist_ok=True)
+        rac_file.write_text(
+            '''
+"""
+For the purposes of section 3 (savings credit), all income is to be treated as qualifying income
+except the following which is not to be treated as qualifying income—
+
+(d)
+
+severe disablement allowance;
+"""
+
+status: encoded
+
+person_has_severe_disablement_allowance_income:
+    entity: Person
+    period: Year
+    dtype: Boolean
+
+qualifying_income_9_d_severe_disablement_allowance:
+    entity: Person
+    period: Year
+    dtype: Boolean
+    from 2025-03-21:
+        false
+'''
+        )
+
+        with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                Mock(
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
+                    stderr="",
+                    returncode=0,
+                ),
+                Mock(
+                    stdout="Checked 1 .rac files\n\nAll files pass validation\n",
+                    stderr="",
+                    returncode=0,
+                ),
+            ]
+            result = pipeline._run_ci(rac_file)
+
+        assert result.passed is False
+        assert any(
+            "Exclusion-list leaf collapsed to placeholder output" in issue
+            for issue in result.issues
+        )
+
+
 class TestExtractTestsFromRacV2ListFormat:
     def test_extracts_top_level_list_format(self, pipeline):
         content = """
@@ -599,7 +690,7 @@ class TestRunCI:
         with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
             mock_run.side_effect = [
                 Mock(
-                    stdout="============================================================\nTests: 0  Passed: 0  Failed: 0\nNo tests found.\n",
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
                     stderr="",
                     returncode=0,
                 ),
@@ -805,7 +896,7 @@ is_child:
         def run_side_effect(cmd, *args, **kwargs):
             if "rac.test_runner" in cmd:
                 return Mock(
-                    stdout="============================================================\nTests: 0  Passed: 0  Failed: 0\nNo tests found.\n",
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
                     stderr="",
                     returncode=0,
                 )
@@ -852,7 +943,7 @@ qualifying_child_count:
         with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
             mock_run.side_effect = [
                 Mock(
-                    stdout="============================================================\nTests: 0  Passed: 0  Failed: 0\nNo tests found.\n",
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
                     stderr="",
                     returncode=0,
                 ),
@@ -892,7 +983,7 @@ qualifying_child_count:
         with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
             mock_run.side_effect = [
                 Mock(
-                    stdout="============================================================\nTests: 0  Passed: 0  Failed: 0\nNo tests found.\n",
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
                     stderr="",
                     returncode=0,
                 ),
@@ -931,7 +1022,7 @@ example_amount:
         with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
             mock_run.side_effect = [
                 Mock(
-                    stdout="============================================================\nTests: 0  Passed: 0  Failed: 0\nNo tests found.\n",
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
                     stderr="",
                     returncode=0,
                 ),
@@ -982,7 +1073,7 @@ example_amount:
         with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
             mock_run.side_effect = [
                 Mock(
-                    stdout="============================================================\nTests: 0  Passed: 0  Failed: 0\nNo tests found.\n",
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
                     stderr="",
                     returncode=0,
                 ),
@@ -1020,7 +1111,7 @@ effective_date_label:
         with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
             mock_run.side_effect = [
                 Mock(
-                    stdout="============================================================\nTests: 0  Passed: 0  Failed: 0\nNo tests found.\n",
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
                     stderr="",
                     returncode=0,
                 ),
@@ -1066,7 +1157,7 @@ award_effective_before_year_threshold:
         with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
             mock_run.side_effect = [
                 Mock(
-                    stdout="============================================================\nTests: 0  Passed: 0  Failed: 0\nNo tests found.\n",
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
                     stderr="",
                     returncode=0,
                 ),
@@ -1105,7 +1196,7 @@ minimum_age_threshold_years:
         with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
             mock_run.side_effect = [
                 Mock(
-                    stdout="============================================================\nTests: 0  Passed: 0  Failed: 0\nNo tests found.\n",
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
                     stderr="",
                     returncode=0,
                 ),
@@ -1157,7 +1248,7 @@ qualifying_young_person_4A_1_b:
         with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
             mock_run.side_effect = [
                 Mock(
-                    stdout="============================================================\nTests: 0  Passed: 0  Failed: 0\nNo tests found.\n",
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
                     stderr="",
                     returncode=0,
                 ),
@@ -1194,7 +1285,7 @@ is_member_of_mixed_age_couple:
         with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
             mock_run.side_effect = [
                 Mock(
-                    stdout="============================================================\nTests: 0  Passed: 0  Failed: 0\nNo tests found.\n",
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
                     stderr="",
                     returncode=0,
                 ),
@@ -1234,7 +1325,7 @@ savings_credit_condition:
         with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
             mock_run.side_effect = [
                 Mock(
-                    stdout="============================================================\nTests: 0  Passed: 0  Failed: 0\nNo tests found.\n",
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
                     stderr="",
                     returncode=0,
                 ),
@@ -1281,7 +1372,7 @@ one_member_of_the_couple_has_been_awarded_savings_credit:
         with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
             mock_run.side_effect = [
                 Mock(
-                    stdout="============================================================\nTests: 0  Passed: 0  Failed: 0\nNo tests found.\n",
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
                     stderr="",
                     returncode=0,
                 ),
@@ -1328,7 +1419,7 @@ one_member_of_couple_remained_entitled_to_savings_credit_since_beginning_of_6th_
         with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
             mock_run.side_effect = [
                 Mock(
-                    stdout="============================================================\nTests: 0  Passed: 0  Failed: 0\nNo tests found.\n",
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
                     stderr="",
                     returncode=0,
                 ),
@@ -1381,7 +1472,7 @@ shared_eligibility_flag:
         with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
             mock_run.side_effect = [
                 Mock(
-                    stdout="============================================================\nTests: 0  Passed: 0  Failed: 0\nNo tests found.\n",
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
                     stderr="",
                     returncode=0,
                 ),
@@ -1427,7 +1518,7 @@ basic_cash_assistance:
         with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
             mock_run.side_effect = [
                 Mock(
-                    stdout="============================================================\nTests: 0  Passed: 0  Failed: 0\nNo tests found.\n",
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
                     stderr="",
                     returncode=0,
                 ),

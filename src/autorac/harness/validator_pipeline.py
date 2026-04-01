@@ -893,7 +893,9 @@ class ValidatorPipeline:
                 timeout=60,
                 env=env,
             )
-            if result.returncode != 0:
+            if "No tests found." in result.stdout:
+                issues.append("Test runner failed: No tests found.")
+            elif result.returncode != 0:
                 summary = next(
                     (
                         line.strip()
@@ -962,6 +964,8 @@ class ValidatorPipeline:
             issues.extend(self._check_decomposed_date_scalars(rac_file))
         with contextlib.suppress(Exception):
             issues.extend(self._check_branch_specific_output_names(rac_file))
+        with contextlib.suppress(Exception):
+            issues.extend(self._check_exclusion_list_principal_outputs(rac_file))
         with contextlib.suppress(Exception):
             issues.extend(self._check_placeholder_fact_variables(rac_file))
 
@@ -1238,6 +1242,41 @@ class ValidatorPipeline:
             "Branch-specific output name missing: "
             f"source text targets branch ({expected_branch}), but the principal output "
             f"`{principal_name}` does not encode that deepest branch token"
+        ]
+
+    def _check_exclusion_list_principal_outputs(self, rac_file: Path) -> list[str]:
+        """Flag exclusion-list leaves whose principal output collapses to a constant."""
+        content = rac_file.read_text()
+        source_text = extract_embedded_source_text(content)
+        if not source_text:
+            return []
+
+        normalized_source = " ".join(source_text.lower().split())
+        if (
+            "except the following which is not to be treated as qualifying income"
+            not in normalized_source
+        ):
+            return []
+
+        blocks = self._extract_definition_blocks(content)
+        if not blocks:
+            return []
+
+        principal = blocks[-1]
+        status = str(principal["status"] or "").lower()
+        if not principal["constant_boolean"] and status != "deferred":
+            return []
+
+        principal_name = str(principal["name"])
+        detail = (
+            "a constant boolean"
+            if principal["constant_boolean"]
+            else "`status: deferred`"
+        )
+        return [
+            "Exclusion-list leaf collapsed to placeholder output: "
+            f"`{principal_name}` encodes a qualifying-income exclusion branch as {detail}; "
+            "encode either the excluded amount itself or a fact-sensitive classification that changes with the source-stated subject/input"
         ]
 
     def _extract_definition_blocks(self, content: str) -> list[dict[str, object]]:

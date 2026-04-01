@@ -12,6 +12,7 @@ import tempfile
 import time
 from collections import Counter
 from dataclasses import asdict, dataclass, field
+from datetime import date
 from pathlib import Path
 from statistics import mean
 from typing import Literal
@@ -1965,6 +1966,7 @@ Available precedent files:
 - Add an effective-date boundary only when the period supports a meaningful point-in-time boundary.
 - Add an alternate branch only when `./source.txt` states another grounded branch condition or amount.
 - Test inputs must contain factual predicates or quantities, not the output variable being asserted.
+- In `.rac.test`, input and output values must be plain scalars or simple mappings, not inline variable declarations with keys like `entity`, `period`, `dtype`, `values`, or `from ...`.
 - Use `output:` mappings in `.rac.test` cases, not `expect:` blocks.
 - The `.rac.test` file must contain YAML only, with no trailing notes or prose.
 - Do not include markdown fences or explanation.
@@ -1987,6 +1989,7 @@ Available precedent files:
 - For UK rate leaves with one grounded monetary amount, encode the directly payable person-level or unit-level amount described by the text; do not collapse it into an unconditional family-level constant.
 - For UK branch leaves like `(a)`, `(b)`, or `80A(2)(c)`, encode the branch identity in the output variable name. Do not reuse generic parent variable names like `child_benefit_weekly_rate`, `standard_minimum_guarantee`, or `benefit_cap` for a branch-specific leaf.
 - If the target text includes a deepest nested branch token like `(i)`, `(ii)`, `(iii)`, `(a)`, or `(b)`, the principal output variable must encode that deepest token, e.g. `qualifying_young_person_4A_1_b_i`, not just the parent branch like `qualifying_young_person_4A_1_b`.
+- For exclusion-list leaves phrased like `all income is qualifying income except ... which is not to be treated as qualifying income`, do not collapse the principal output to an unconditional `true` or `false`. Encode either the excluded amount itself or a fact-sensitive classification that changes with the source-stated subject/input.
 - In `.rac.test`, use helper/input names that expose the actual legal facts from the source text. Prefer names like `child_benefit_is_only_person`, `child_benefit_is_elder_or_eldest_person`, `claimant_has_partner`, `is_single_claimant`, `is_joint_claimant`, `resident_in_greater_london`, or `responsible_for_child_or_qualifying_young_person`.
 - In `.rac.test`, avoid opaque placeholders like `*_condition`, `*_eligibility_flag`, or `family_has_partner` when a more direct legal-fact name is available from the source text.
 - For provisions phrased like `Where X, Y must ...`, encode the triggered requirement itself. Include a `.rac.test` case where `X` is false; unless `./source.txt` expressly says otherwise, the requirement should evaluate as satisfied or inapplicable rather than false in that case.
@@ -2918,20 +2921,10 @@ def _normalize_single_amount_row_test_content(
     annual_period = bool(
         rac_content and re.search(r"^\s*period:\s*Year\s*$", rac_content, flags=re.MULTILINE)
     )
-    annual_base_period = None
-    if annual_period:
-        if rac_content and (
-            from_match := re.search(r"\bfrom\s+(\d{4})-\d{2}-\d{2}:", rac_content)
-        ):
-            annual_base_period = int(from_match.group(1))
-        elif source_text and (
-            source_match := re.search(
-                r"\b(?:text|current text)\s+valid\s+from\s+(\d{4})-\d{2}-\d{2}\b",
-                source_text,
-                flags=re.IGNORECASE,
-            )
-        ):
-            annual_base_period = int(source_match.group(1))
+    effective_date = _extract_effective_date_for_tests(
+        rac_content=rac_content,
+        source_text=source_text,
+    )
 
     def should_keep(case_name: str | None) -> bool:
         if not case_name:
@@ -2947,8 +2940,11 @@ def _normalize_single_amount_row_test_content(
         if not isinstance(case, dict):
             return case
         normalized_case = dict(case)
-        if annual_period and annual_base_period is not None and "period" not in normalized_case:
-            normalized_case["period"] = annual_base_period
+        if annual_period and effective_date is not None:
+            normalized_case["period"] = _normalize_annual_test_period_value(
+                normalized_case.get("period"),
+                effective_date,
+            )
         output = normalized_case.get("output")
         if isinstance(output, dict) and len(output) > 1:
             numeric_output = {
@@ -2983,6 +2979,208 @@ def _normalize_single_amount_row_test_content(
             if should_keep(case_name):
                 filtered_items[key] = normalize_case(value)
         return yaml.safe_dump(filtered_items, sort_keys=False).strip() + "\n"
+
+    return normalized
+
+
+def _extract_effective_date_for_tests(
+    rac_content: str | None,
+    source_text: str | None,
+) -> date | None:
+    """Return the earliest explicit effective date available for test normalization."""
+    if rac_content and (
+        from_match := re.search(r"\bfrom\s+(\d{4}-\d{2}-\d{2}):", rac_content)
+    ):
+        return date.fromisoformat(from_match.group(1))
+    if source_text and (
+        source_match := re.search(
+            r"\b(?:text|current text)\s+valid\s+from\s+(\d{4}-\d{2}-\d{2})\b",
+            source_text,
+            flags=re.IGNORECASE,
+        )
+    ):
+        return date.fromisoformat(source_match.group(1))
+    return None
+
+
+def _normalize_annual_test_period_value(
+    period: object,
+    effective_date: date,
+) -> object:
+    """Convert bare annual periods into concrete dates on or after the effective date."""
+    year: int | None = None
+    if period is None:
+        year = effective_date.year
+    elif isinstance(period, int):
+        year = period
+    elif isinstance(period, str) and re.fullmatch(r"\d{4}", period):
+        year = int(period)
+
+    if year is None:
+        return period
+    if year < effective_date.year:
+        return period
+    if year == effective_date.year:
+        return effective_date.isoformat()
+    return f"{year}-01-01"
+
+
+def _extract_rac_period_granularity(rac_content: str | None) -> str | None:
+    """Return the first declared RAC period name."""
+    if rac_content is None:
+        return None
+    match = re.search(
+        r"^\s*period:\s*(Year|Month|Week|Day)\s*$",
+        rac_content,
+        flags=re.MULTILINE,
+    )
+    return match.group(1) if match else None
+
+
+def _default_test_period_for_granularity(
+    granularity: str | None,
+    effective_date: date,
+) -> str:
+    """Return a concrete test period compatible with the RAC runner."""
+    return effective_date.isoformat()
+
+
+def _normalize_nonannual_test_period_value(
+    period: object,
+    effective_date: date,
+) -> object:
+    """Convert non-annual periods to concrete dates on or after the effective date."""
+    if period is None:
+        return effective_date.isoformat()
+    if isinstance(period, int):
+        if period == effective_date.year:
+            return effective_date.isoformat()
+        if period > effective_date.year:
+            return f"{period}-01-01"
+        return period
+    if isinstance(period, str):
+        if re.fullmatch(r"\d{4}", period):
+            year = int(period)
+            if year == effective_date.year:
+                return effective_date.isoformat()
+            if year > effective_date.year:
+                return f"{year}-01-01"
+            return period
+        if re.fullmatch(r"\d{4}-\d{2}", period):
+            if period == effective_date.strftime("%Y-%m"):
+                return effective_date.isoformat()
+            return period
+    return period
+
+
+def _normalize_test_case_value(value: object) -> object:
+    """Collapse entity/time wrappers in generated .rac.test values to plain scalars."""
+    if isinstance(value, list):
+        return [_normalize_test_case_value(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+
+    normalized = {
+        key: _normalize_test_case_value(inner) for key, inner in value.items()
+    }
+    lowered_keys = {str(key).lower() for key in normalized.keys()}
+    metadata_keys = {"entity", "period", "dtype", "unit", "label", "description", "default"}
+
+    values_entries = [
+        inner for key, inner in normalized.items() if str(key).lower() == "values"
+    ]
+    if len(values_entries) == 1 and lowered_keys.issubset(metadata_keys | {"values"}):
+        values_entry = values_entries[0]
+        if isinstance(values_entry, dict) and len(values_entry) == 1:
+            return _normalize_test_case_value(next(iter(values_entry.values())))
+        return _normalize_test_case_value(values_entry)
+
+    from_entries = [
+        inner
+        for key, inner in normalized.items()
+        if str(key).lower().startswith("from ")
+    ]
+    if from_entries and lowered_keys.issubset(metadata_keys | {str(key).lower() for key in normalized.keys() if str(key).lower().startswith("from ")}):
+        if len(from_entries) == 1:
+            return _normalize_test_case_value(from_entries[0])
+
+    if len(normalized) == 1:
+        only_key, only_value = next(iter(normalized.items()))
+        if re.fullmatch(r"\d{4}(?:-\d{2})?(?:-\d{2})?", str(only_key)):
+            return _normalize_test_case_value(only_value)
+        if not isinstance(only_value, (dict, list)):
+            return only_value
+
+    return normalized
+
+
+def _normalize_test_periods_to_effective_dates(
+    content: str,
+    rac_content: str | None = None,
+    source_text: str | None = None,
+) -> str:
+    """Normalize annual test periods to concrete dates that survive effective-date compilation."""
+    normalized = _normalize_comma_numeric_literals(content)
+    granularity = _extract_rac_period_granularity(rac_content)
+    effective_date = _extract_effective_date_for_tests(
+        rac_content=rac_content,
+        source_text=source_text,
+    )
+    if effective_date is None and granularity != "Year":
+        return normalized
+
+    try:
+        payload = yaml.safe_load(normalized)
+    except yaml.YAMLError:
+        return normalized
+
+    if payload is None:
+        return normalized
+
+    def normalize_case(case: object) -> object:
+        if not isinstance(case, dict):
+            return case
+        normalized_case = dict(case)
+        if granularity == "Year" and effective_date is not None:
+            normalized_case["period"] = _normalize_annual_test_period_value(
+                normalized_case.get("period"),
+                effective_date,
+            )
+        elif effective_date is not None:
+            normalized_case["period"] = _normalize_nonannual_test_period_value(
+                normalized_case.get("period"),
+                effective_date,
+            )
+
+        for key in ("input", "inputs", "output"):
+            if key in normalized_case and isinstance(normalized_case[key], dict):
+                normalized_case[key] = {
+                    child_key: _normalize_test_case_value(child_value)
+                    for child_key, child_value in normalized_case[key].items()
+                }
+        if "expect" in normalized_case:
+            normalized_case["expect"] = _normalize_test_case_value(
+                normalized_case["expect"]
+            )
+        return normalized_case
+
+    if isinstance(payload, list):
+        return yaml.safe_dump(
+            [normalize_case(case) for case in payload],
+            sort_keys=False,
+        ).strip() + "\n"
+
+    if isinstance(payload, dict):
+        if isinstance(payload.get("tests"), list):
+            payload["tests"] = [normalize_case(case) for case in payload["tests"]]
+            return yaml.safe_dump(payload, sort_keys=False).strip() + "\n"
+        normalized_payload: dict[object, object] = {}
+        for key, value in payload.items():
+            if isinstance(value, list):
+                normalized_payload[key] = [normalize_case(case) for case in value]
+            else:
+                normalized_payload[key] = normalize_case(value)
+        return yaml.safe_dump(normalized_payload, sort_keys=False).strip() + "\n"
 
     return normalized
 
@@ -3033,7 +3231,11 @@ def _materialize_eval_artifact(
             elif target_path == expected_path:
                 content = _normalize_rac_code_numeric_literals(content)
             elif target_path == expected_test_path:
-                content = _normalize_comma_numeric_literals(content)
+                content = _normalize_test_periods_to_effective_dates(
+                    content,
+                    rac_content=bundle.get(expected_path.name),
+                    source_text=source_text,
+                )
             target_path.parent.mkdir(parents=True, exist_ok=True)
             target_path.write_text(content)
             if target_path == expected_path:
@@ -3085,7 +3287,11 @@ def _materialize_workspace_artifacts(
                 source_text=source_text,
             )
         else:
-            test_content = _normalize_comma_numeric_literals(test_content)
+            test_content = _normalize_test_periods_to_effective_dates(
+                test_content,
+                rac_content=main_content,
+                source_text=source_text,
+            )
         expected_test_path.write_text(test_content)
 
     return True

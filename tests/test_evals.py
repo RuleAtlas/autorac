@@ -570,6 +570,7 @@ class TestGeneratedBundleCleaning:
         test_text = output_file.with_suffix(".rac.test").read_text()
         assert "base_case" in test_text
         assert "effective_date_boundary" not in test_text
+        assert "period: '2021-04-06'" in test_text or "period: 2021-04-06" in test_text
 
     def test_materialize_eval_artifact_infers_annual_base_period_when_missing(
         self, tmp_path
@@ -603,7 +604,93 @@ class TestGeneratedBundleCleaning:
 
         assert wrote is True
         test_text = output_file.with_suffix(".rac.test").read_text()
-        assert "period: 2021" in test_text
+        assert "period: '2021-04-06'" in test_text or "period: 2021-04-06" in test_text
+
+    def test_materialize_eval_artifact_normalizes_year_only_annual_test_periods(
+        self, tmp_path
+    ):
+        output_file = tmp_path / "source" / "uksi-2002-1792-regulation-9-a.rac"
+        source_text = (
+            "Editorial note: current text valid from 2025-03-21.\n\n"
+            "working tax credit;"
+        )
+        llm_response = (
+            "=== FILE: uksi-2002-1792-regulation-9-a.rac ===\n"
+            "working_tax_credit:\n"
+            "    entity: Person\n"
+            "    period: Year\n"
+            "    dtype: Money\n\n"
+            "qualifying_income_excluded_9_a:\n"
+            "    entity: Person\n"
+            "    period: Year\n"
+            "    dtype: Money\n"
+            "    from 2025-03-21:\n"
+            "        working_tax_credit\n"
+            "=== FILE: uksi-2002-1792-regulation-9-a.rac.test ===\n"
+            "- name: base_case\n"
+            "  period: 2025\n"
+            "  input:\n"
+            "    working_tax_credit: 1\n"
+            "  output:\n"
+            "    qualifying_income_excluded_9_a: 1\n"
+        )
+
+        wrote = _materialize_eval_artifact(
+            llm_response,
+            output_file,
+            source_text=source_text,
+        )
+
+        assert wrote is True
+        test_text = output_file.with_suffix(".rac.test").read_text()
+        assert "period: '2025-03-21'" in test_text or "period: 2025-03-21" in test_text
+
+    def test_materialize_eval_artifact_fills_missing_period_and_flattens_wrappers(
+        self, tmp_path
+    ):
+        output_file = tmp_path / "source" / "uksi-2002-1792-regulation-9-e.rac"
+        source_text = (
+            "Editorial note: current text valid from 2025-03-21.\n\n"
+            "maternity allowance;"
+        )
+        llm_response = (
+            "=== FILE: uksi-2002-1792-regulation-9-e.rac ===\n"
+            "maternity_allowance_amount:\n"
+            "    entity: Person\n"
+            "    period: Month\n"
+            "    dtype: Money\n\n"
+            "qualifying_income_exclusion_9_e_maternity_allowance:\n"
+            "    entity: Person\n"
+            "    period: Month\n"
+            "    dtype: Money\n"
+            "    from 2025-03-21:\n"
+            "        maternity_allowance_amount\n"
+            "=== FILE: uksi-2002-1792-regulation-9-e.rac.test ===\n"
+            "- name: base_case\n"
+            "  input:\n"
+            "    maternity_allowance_amount:\n"
+            "      entity: Person\n"
+            "      period: Month\n"
+            "      dtype: Money\n"
+            "      values:\n"
+            "        2025-03: 3\n"
+            "  output:\n"
+            "    qualifying_income_exclusion_9_e_maternity_allowance:\n"
+            "      2025-03: 3\n"
+        )
+
+        wrote = _materialize_eval_artifact(
+            llm_response,
+            output_file,
+            source_text=source_text,
+        )
+
+        assert wrote is True
+        test_text = output_file.with_suffix(".rac.test").read_text()
+        assert "period: '2025-03-21'" in test_text or "period: 2025-03-21" in test_text
+        assert "entity: Person" not in test_text
+        assert "values:" not in test_text
+        assert "qualifying_income_exclusion_9_e_maternity_allowance: 3" in test_text
 
     def test_materialize_eval_artifact_normalizes_single_row_inline_conditional_without_else(
         self, tmp_path
@@ -1548,7 +1635,6 @@ class TestEvalPrompt:
 
         assert "The `.rac.test` file must contain YAML only" in prompt
         assert "Do not add speculative future-period tests" in prompt
-        assert "must vary a real legal condition" in prompt
         assert "must contain factual predicates or quantities, not the output variable" in prompt
         assert "Use `output:` mappings in `.rac.test` cases" in prompt
 
@@ -1795,6 +1881,7 @@ class TestEvalPrompt:
         assert "Do not replace that import with a local deferred stub" in prompt
         assert "Do not encode such local factual predicates as placeholder constants like `true` or `false`." in prompt
         assert "Do not encode such local factual predicates as `status: deferred`" in prompt
+        assert "do not collapse the principal output to an unconditional `true` or `false`" in prompt
 
     def test_build_eval_prompt_includes_import_vs_local_helper_protocol(
         self, tmp_path
