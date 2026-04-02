@@ -360,6 +360,41 @@ example_amount:
         ]
         mock_reviewer.assert_called_once()
         assert mock_reviewer.call_args.args[0] == "generalist-reviewer"
+        assert "atomic source slice" in mock_reviewer.call_args.kwargs["review_context"]
+
+    def test_build_eval_prompt_for_atomic_conjunctive_branch_discourages_normative_names(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/regulation/10",
+            runner=parse_runner_spec("openai:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text=(
+                "Where the Secretary of State is informed that the arrangements under "
+                "which the assessed amount is paid contains provision—\n\n"
+                "(b)\n\n"
+                "for the date on which the increase is to be paid; and"
+            ),
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2002/1792/regulation/10",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2002-1792-regulation-10.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "atomic conjunctive branch slices" in prompt
+        assert "do not pretend to encode the whole parent consequence" in prompt
+        assert "avoid standalone normative names like `..._must_...`" in prompt
+        assert "do not make the principal output a bare input stub" in prompt
+        assert "feed the asserted output back into `input:`" in prompt
 
 
 class TestGeneratedBundleCleaning:
@@ -709,6 +744,44 @@ class TestGeneratedBundleCleaning:
         assert wrote is True
         test_text = output_file.with_suffix(".rac.test").read_text()
         assert "period: '2025-03-21'" in test_text or "period: 2025-03-21" in test_text
+
+    def test_materialize_eval_artifact_normalizes_mapping_style_tests_to_list(
+        self, tmp_path
+    ):
+        output_file = tmp_path / "source" / "uksi-2002-1792-regulation-10-5-b-ii.rac"
+        source_text = (
+            "Editorial note: current text valid from 2025-03-21.\n\n"
+            "where head (i) does not apply, the first day of the next benefit week "
+            "following that increased payment date."
+        )
+        llm_response = (
+            "=== FILE: uksi-2002-1792-regulation-10-5-b-ii.rac ===\n"
+            "day_referred_to_10_5_b_ii:\n"
+            "    entity: Person\n"
+            "    period: Day\n"
+            "    dtype: Boolean\n"
+            "    from 2025-03-21:\n"
+            "        some_fact\n"
+            "=== FILE: uksi-2002-1792-regulation-10-5-b-ii.rac.test ===\n"
+            "case_branch_ii_applies:\n"
+            "  period: 2025-03-21\n"
+            "  input:\n"
+            "    some_fact: true\n"
+            "  output:\n"
+            "    day_referred_to_10_5_b_ii: true\n"
+        )
+
+        wrote = _materialize_eval_artifact(
+            llm_response,
+            output_file,
+            source_text=source_text,
+        )
+
+        assert wrote is True
+        test_text = output_file.with_suffix(".rac.test").read_text()
+        assert test_text.lstrip().startswith("- ")
+        assert "name: case_branch_ii_applies" in test_text
+        assert "case_branch_ii_applies:" not in test_text
 
     def test_materialize_eval_artifact_fills_missing_period_and_flattens_wrappers(
         self, tmp_path
@@ -1699,6 +1772,7 @@ class TestEvalPrompt:
         )
 
         assert "The `.rac.test` file must contain YAML only" in prompt
+        assert "must be a YAML list of cases beginning with `- name:`" in prompt
         assert "Do not add speculative future-period tests" in prompt
         assert "must contain factual predicates or quantities, not the output variable" in prompt
         assert "Use `output:` mappings in `.rac.test` cases" in prompt

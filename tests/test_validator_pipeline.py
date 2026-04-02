@@ -239,6 +239,18 @@ following the person's 19th birthday.
         assert 19.0 in occurrences
         assert 1.0 not in occurrences
 
+    def test_ignores_table_column_references(self):
+        occurrences = extract_numeric_occurrences_from_text(
+            """
+An assessed income period shall end if it would have ended on a date falling within
+the period specified in column 1 of the table in Schedule IIIA, on the corresponding
+date shown against that period in column 2 of that table.
+"""
+        )
+
+        assert 1.0 not in occurrences
+        assert 2.0 not in occurrences
+
 
 class TestExtractNamedScalarOccurrences:
     def test_extracts_direct_and_multiline_temporal_scalars(self):
@@ -1607,6 +1619,26 @@ class TestRunReviewer:
             call_prompt = mock_claude.call_args[0][0]
             assert "POLICYENGINE" in call_prompt
 
+    def test_reviewer_includes_review_context_and_companion_test(
+        self, pipeline, temp_rac_file
+    ):
+        companion = temp_rac_file.with_suffix(".rac.test")
+        companion.write_text("- name: base\n  output: {}\n")
+        with patch("autorac.harness.validator_pipeline.run_claude_code") as mock_claude:
+            mock_claude.return_value = (
+                '{"score": 7.0, "passed": true, "issues": [], "reasoning": "ok"}',
+                0,
+            )
+            pipeline._run_reviewer(
+                "generalist-reviewer",
+                temp_rac_file,
+                review_context="Benchmark artifact path is generic.",
+            )
+            call_prompt = mock_claude.call_args[0][0]
+            assert "Benchmark artifact path is generic." in call_prompt
+            assert "Companion Test File" in call_prompt
+            assert "- name: base" in call_prompt
+
     def test_reviewer_no_json_in_output(self, pipeline, temp_rac_file):
         """Reviewer handles response without JSON."""
         with patch("autorac.harness.validator_pipeline.run_claude_code") as mock_claude:
@@ -1663,6 +1695,7 @@ class TestRunReviewer:
             call_prompt = mock_claude.call_args[0][0]
             assert "senior statutory-fidelity reviewer" in call_prompt
             assert "No semantic compression" in call_prompt
+            assert "atomic source slice or branch leaf" in call_prompt
 
     def test_reviewer_unknown_type(self, pipeline, temp_rac_file):
         """Unknown reviewer type uses 'overall quality' focus."""

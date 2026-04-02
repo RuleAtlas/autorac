@@ -1632,11 +1632,19 @@ def evaluate_artifact(
             "issues": taxsim_result.issues,
             "duration_ms": taxsim_result.duration_ms,
         }
+    review_context = (
+        "This review is running inside an eval-suite benchmark workspace. "
+        "The artifact file path is generic benchmark output and is not itself the legal citation. "
+        "The benchmark target is an atomic source slice, so judge fidelity to exactly this slice rather than demanding omitted sibling limbs or parent consequences unless the RAC claims to encode them. "
+        "Judge citation fidelity against the embedded source-text docstring and this authoritative source excerpt:\n\n"
+        f"{source_text.strip()[:4000]}"
+    )
     try:
         generalist_review_result = pipeline._run_reviewer(
             "generalist-reviewer",
             rac_file,
             oracle_context or None,
+            review_context=review_context,
         )
     except Exception as exc:
         generalist_review_result = ValidationResult(
@@ -2030,6 +2038,7 @@ Available precedent files:
 === FILE: {test_file_name} ===
 <raw .rac.test YAML>
 - The `.rac.test` file must contain 1-4 cases.
+- The `.rac.test` file must be a YAML list of cases beginning with `- name:` entries, not a top-level mapping keyed by case names.
 - For a single fixed-amount source slice, a base case is sufficient.
 - Add an effective-date boundary only when the period supports a meaningful point-in-time boundary.
 - Add an alternate branch only when `./source.txt` states another grounded branch condition or amount.
@@ -2057,10 +2066,15 @@ Available precedent files:
 - For UK rate leaves with one grounded monetary amount, encode the directly payable person-level or unit-level amount described by the text; do not collapse it into an unconditional family-level constant.
 - For UK branch leaves like `(a)`, `(b)`, or `80A(2)(c)`, encode the branch identity in the output variable name. Do not reuse generic parent variable names like `child_benefit_weekly_rate`, `standard_minimum_guarantee`, or `benefit_cap` for a branch-specific leaf.
 - If the target text includes a deepest nested branch token like `(i)`, `(ii)`, `(iii)`, `(a)`, or `(b)`, the principal output variable must encode that deepest token, e.g. `qualifying_young_person_4A_1_b_i`, not just the parent branch like `qualifying_young_person_4A_1_b`.
+- For example, if the target source branch is `regulation-10-4-b`, a principal output like `assessed_amount_deemed_increase_10_4` is too generic; it must carry the branch token, e.g. `assessed_amount_deemed_increase_10_4_b`.
+- For atomic conjunctive branch slices that read like a lone limb ending in `and` or `or`, encode the limb-specific fact or limb-satisfaction condition itself; do not pretend to encode the whole parent consequence or all sibling limbs.
+- For those atomic conjunctive branch slices, prefer neutral factual names like `arrangements_contain_provision_for_date_on_which_increase_is_to_be_paid_10_4_b` or `..._10_4_b_satisfied`; avoid standalone normative names like `..._must_...` unless the source text itself uses `must`.
+- For those atomic conjunctive branch slices, do not make the principal output a bare input stub with no formula. Expose the raw fact as a `*_fact` input if needed, and make the principal branch-specific output a derived `*_satisfied` or equivalent variable so `.rac.test` does not need to feed the asserted output back into `input:`.
 - For exclusion-list leaves phrased like `all income is qualifying income except ... which is not to be treated as qualifying income`, do not collapse the principal output to an unconditional `true` or `false`. Encode either the excluded amount itself or a fact-sensitive classification that changes with the source-stated subject/input.
 - In `.rac.test`, use helper/input names that expose the actual legal facts from the source text. Prefer names like `child_benefit_is_only_person`, `child_benefit_is_elder_or_eldest_person`, `claimant_has_partner`, `is_single_claimant`, `is_joint_claimant`, `resident_in_greater_london`, or `responsible_for_child_or_qualifying_young_person`.
 - In `.rac.test`, avoid opaque placeholders like `*_condition`, `*_eligibility_flag`, or `family_has_partner` when a more direct legal-fact name is available from the source text.
 - For provisions phrased like `Where X, Y must ...`, encode the triggered requirement itself. Include a `.rac.test` case where `X` is false; unless `./source.txt` expressly says otherwise, the requirement should evaluate as satisfied or inapplicable rather than false in that case.
+- When a boolean output ultimately depends on a final fact-shaped input and the source text makes a meaningful false case possible, include a `.rac.test` case where the applicability conditions hold but that final fact input is false.
 - In `.rac.test`, choose periods on or after the explicit effective date in `./source.txt`.
 - Do not add speculative future-period tests that would rely on uprating, later amendments, or rates not stated in `./source.txt`.
 """
@@ -2127,6 +2141,30 @@ Rules:
 - When the source states factual predicates that this leaf depends on, expose those predicates as plain fact-shaped inputs (`entity`, `period`, `dtype`) unless they are imported from a canonical definition.
 - Do not encode such local factual predicates as placeholder constants like `true` or `false`.
 - Do not encode such local factual predicates as `status: deferred`; if they are not imported, leave them as plain input stubs instead.
+- Wrong:
+  some_paragraph_applies:
+      entity: Person
+      period: Day
+      dtype: Boolean
+      from 2025-03-21:
+          false
+- Right:
+  some_paragraph_applies:
+      entity: Person
+      period: Day
+      dtype: Boolean
+- Wrong:
+  current_day_is_first_day_of_next_benefit_week:
+      entity: Person
+      period: Day
+      dtype: Boolean
+      from 2025-03-21:
+          false
+- Right:
+  current_day_is_first_day_of_next_benefit_week:
+      entity: Person
+      period: Day
+      dtype: Boolean
 - Do not invent schema keys like `namespace:`, `parameter`, `variable`, or `rule:`.
 {schema_rules}{uk_guidance}{single_amount_row_guidance}{target_hint_guidance}
 - Prefer standard RAC blocks shaped like:
@@ -3024,29 +3062,14 @@ def _normalize_single_amount_row_test_content(
                 normalized_case["output"] = numeric_output
         return normalized_case
 
-    if isinstance(payload, list):
+    cases = _coerce_test_payload_to_case_list(payload)
+    if cases is not None:
         filtered = [
             normalize_case(case)
-            for case in payload
+            for case in cases
             if not isinstance(case, dict) or should_keep(case.get("name"))
         ]
         return yaml.safe_dump(filtered, sort_keys=False).strip() + "\n"
-
-    if isinstance(payload, dict):
-        if isinstance(payload.get("tests"), list):
-            payload["tests"] = [
-                normalize_case(case)
-                for case in payload["tests"]
-                if not isinstance(case, dict) or should_keep(case.get("name"))
-            ]
-            return yaml.safe_dump(payload, sort_keys=False).strip() + "\n"
-
-        filtered_items: dict[str, object] = {}
-        for key, value in payload.items():
-            case_name = key if isinstance(key, str) else None
-            if should_keep(case_name):
-                filtered_items[key] = normalize_case(value)
-        return yaml.safe_dump(filtered_items, sort_keys=False).strip() + "\n"
 
     return normalized
 
@@ -3141,6 +3164,34 @@ def _normalize_nonannual_test_period_value(
     return period
 
 
+def _coerce_test_payload_to_case_list(payload: object) -> list[object] | None:
+    """Return test payloads as a plain list of case objects when recognizable."""
+    if isinstance(payload, list):
+        return payload
+
+    if not isinstance(payload, dict):
+        return None
+
+    tests_payload = payload.get("tests")
+    if isinstance(tests_payload, list):
+        return tests_payload
+
+    case_like_keys = {"name", "period", "input", "inputs", "output", "expect"}
+    if case_like_keys & set(payload):
+        return [payload]
+
+    if not payload or not all(isinstance(value, dict) for value in payload.values()):
+        return None
+
+    cases: list[object] = []
+    for key, value in payload.items():
+        case = dict(value)
+        if isinstance(key, str) and "name" not in case:
+            case["name"] = key
+        cases.append(case)
+    return cases
+
+
 def _normalize_test_case_value(value: object) -> object:
     """Collapse entity/time wrappers in generated .rac.test values to plain scalars."""
     if isinstance(value, list):
@@ -3232,23 +3283,12 @@ def _normalize_test_periods_to_effective_dates(
             )
         return normalized_case
 
-    if isinstance(payload, list):
+    cases = _coerce_test_payload_to_case_list(payload)
+    if cases is not None:
         return yaml.safe_dump(
-            [normalize_case(case) for case in payload],
+            [normalize_case(case) for case in cases],
             sort_keys=False,
         ).strip() + "\n"
-
-    if isinstance(payload, dict):
-        if isinstance(payload.get("tests"), list):
-            payload["tests"] = [normalize_case(case) for case in payload["tests"]]
-            return yaml.safe_dump(payload, sort_keys=False).strip() + "\n"
-        normalized_payload: dict[object, object] = {}
-        for key, value in payload.items():
-            if isinstance(value, list):
-                normalized_payload[key] = [normalize_case(case) for case in value]
-            else:
-                normalized_payload[key] = normalize_case(value)
-        return yaml.safe_dump(normalized_payload, sort_keys=False).strip() + "\n"
 
     return normalized
 

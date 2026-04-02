@@ -139,8 +139,9 @@ GENERALIST_REVIEWER_PROMPT = (
     """You are a senior statutory-fidelity reviewer for RAC (Rules as Code) encodings.
 
 Review the file holistically for:
-1. **Filepath = citation**: The file encodes exactly the cited provision, not nearby law.
-2. **Whole-rule fidelity**: All operative branches, exceptions, and conditions from the cited text are present.
+1. **Citation fidelity**: When the file path encodes a legal citation, the file must match it exactly; when review context says the file path is generic benchmark output, use the embedded source text and review context as the citation anchor instead.
+2. **Slice fidelity**: When the target is an atomic source slice or branch leaf, judge fidelity to that slice itself. Do not fail solely because sibling limbs, parent consequences, or downstream cross-referenced effects are omitted unless the file claims to encode them.
+3. **Whole-rule fidelity**: All operative branches, exceptions, and conditions from the cited text are present for the slice being encoded.
 3. **No semantic compression**: Distinct statutory branches or repeated scalar occurrences are not collapsed into a single over-generic helper.
 4. **Defined terms and imports**: Explicitly or implicitly legally defined terms are imported from their canonical source when one exists.
 5. **Fact modeling**: Factual predicates are modeled as inputs or canonical imports, not hard-coded booleans or deferred placeholders.
@@ -211,6 +212,10 @@ _SOURCE_REFERENCE_PATTERNS = (
     re.compile(
         r"\b(?:section|sections|paragraph|paragraphs|regulation|regulations|part|parts|chapter|chapters|schedule|schedules|article|articles|subparagraph|subparagraphs|sub-paragraph|sub-paragraphs|subsection|subsections)\s+"
         rf"{_SOURCE_REFERENCE_SEQUENCE_PATTERN}(?:\s+to\s+{_SOURCE_REFERENCE_SEQUENCE_PATTERN})?",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        rf"\b(?:column|columns)\s+{_SOURCE_REFERENCE_SEQUENCE_PATTERN}(?:\s+to\s+{_SOURCE_REFERENCE_SEQUENCE_PATTERN})?",
         re.IGNORECASE,
     ),
     re.compile(r"\b(?:Act|Order|Regulations?)\s+\d{4}\b"),
@@ -1576,6 +1581,7 @@ class ValidatorPipeline:
         reviewer_type: str,
         rac_file: Path,
         oracle_context: Optional[dict] = None,
+        review_context: str | None = None,
     ) -> ValidationResult:
         """Run a reviewer agent via Claude Code CLI with oracle context.
 
@@ -1592,6 +1598,10 @@ class ValidatorPipeline:
         # Read RAC file content
         try:
             rac_content = Path(rac_file).read_text()
+            test_content = None
+            companion_test = rac_file.with_suffix(".rac.test")
+            if companion_test.exists():
+                test_content = companion_test.read_text()
         except Exception as e:
             duration = int((time.time() - start) * 1000)
             return ValidationResult(
@@ -1628,6 +1638,15 @@ class ValidatorPipeline:
                 oracle_section += f"- Passed: {ctx.get('passed', 'N/A')}\n"
                 if ctx.get("issues"):
                     oracle_section += f"- Issues: {', '.join(ctx['issues'][:3])}\n"
+        review_context_section = ""
+        if review_context:
+            review_context_section = f"\n## Review Context\n{review_context}\n"
+        test_section = ""
+        if test_content:
+            test_section = (
+                "\n## Companion Test File\n"
+                f"{test_content[:3000]}{'...' if len(test_content) > 3000 else ''}\n"
+            )
 
         if prompt_template is not None:
             prompt = f"""{prompt_template}
@@ -1642,7 +1661,7 @@ File: {rac_file}
 
 Content:
 {rac_content[:6000]}{"..." if len(rac_content) > 6000 else ""}
-{oracle_section}
+{test_section}{review_context_section}{oracle_section}
 If oracle validators show discrepancies, investigate WHY the encoding differs from consensus.
 
 Output ONLY valid JSON matching the schema above.
@@ -1654,7 +1673,7 @@ File: {rac_file}
 
 Content:
 {rac_content[:3000]}{"..." if len(rac_content) > 3000 else ""}
-{oracle_section}
+{test_section}{review_context_section}{oracle_section}
 If oracle validators show discrepancies, investigate WHY the encoding differs from consensus.
 
 Output ONLY valid JSON:
