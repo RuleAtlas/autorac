@@ -896,6 +896,8 @@ def run_legislation_gov_uk_section_eval(
     section_eid: str | None = None,
     allow_parent: bool = False,
     table_row_query: str | None = None,
+    oracle: EvalOracleMode = "none",
+    policyengine_country: str = "auto",
     policyengine_rac_var_hint: str | None = None,
     fetch_cache_root: Path | None = None,
 ) -> list[EvalResult]:
@@ -917,8 +919,8 @@ def run_legislation_gov_uk_section_eval(
         extra_context_paths=extra_context_paths,
         allow_parent=allow_parent,
         table_row_query=table_row_query,
-        oracle="policyengine",
-        policyengine_country="uk",
+        oracle=oracle,
+        policyengine_country=policyengine_country,
         policyengine_rac_var_hint=policyengine_rac_var_hint,
     )
 
@@ -1107,6 +1109,8 @@ def run_eval_suite(
                         extra_context_paths=extra_context,
                         allow_parent=case.allow_parent,
                         table_row_query=case.table_row_query,
+                        oracle=case.oracle,
+                        policyengine_country=case.policyengine_country,
                         policyengine_rac_var_hint=case.policyengine_rac_var_hint,
                         fetch_cache_root=Path(output_root),
                     )
@@ -1635,10 +1639,21 @@ def evaluate_artifact(
     review_context = (
         "This review is running inside an eval-suite benchmark workspace. "
         "The artifact file path is generic benchmark output and is not itself the legal citation. "
+        "Benchmark directory labels may be stale, generic, or misleading and must be ignored as legal cues. "
         "The benchmark target is an atomic source slice, so judge fidelity to exactly this slice rather than demanding omitted sibling limbs or parent consequences unless the RAC claims to encode them. "
         "Judge citation fidelity against the embedded source-text docstring and this authoritative source excerpt:\n\n"
         f"{source_text.strip()[:4000]}"
     )
+    if re.search(
+        r"\bon the first day\b|\bnext benefit week\b|\bon or after the day\b",
+        source_text,
+        flags=re.IGNORECASE,
+    ):
+        review_context += (
+            "\n\nThis is a temporal timing clause. RAC does not expose a native date-valued output in this eval, "
+            "so a boolean day-predicate helper on `period: Day`, plus explicit trigger preconditions from the source text, "
+            "is an acceptable representation."
+        )
     try:
         generalist_review_result = pipeline._run_reviewer(
             "generalist-reviewer",
@@ -2070,14 +2085,19 @@ Available precedent files:
 - For atomic conjunctive branch slices that read like a lone limb ending in `and` or `or`, encode the limb-specific fact or limb-satisfaction condition itself; do not pretend to encode the whole parent consequence or all sibling limbs.
 - For those atomic conjunctive branch slices, prefer neutral factual names like `arrangements_contain_provision_for_date_on_which_increase_is_to_be_paid_10_4_b` or `..._10_4_b_satisfied`; avoid standalone normative names like `..._must_...` unless the source text itself uses `must`.
 - For those atomic conjunctive branch slices, do not make the principal output a bare input stub with no formula. Expose the raw fact as a `*_fact` input if needed, and make the principal branch-specific output a derived `*_satisfied` or equivalent variable so `.rac.test` does not need to feed the asserted output back into `input:`.
+- When `./source.txt` includes parent intro context like `Where X, ...` only because this leaf is nested under that parent, do not automatically turn `X` into a separate applicability gate for the leaf. Encode the branch limb itself unless the leaf text expressly depends on that extra condition.
+- For temporal branch leaves that specify the day on which a consequence occurs, preserve explicit trigger conditions from the parent clause when they state when the timing rule operates.
+- When RAC lacks a native date-valued output for such a temporal leaf, model the statutory day as a fact-shaped boolean helper on `period: Day`, and derive the principal output from that helper plus any explicit trigger conditions stated in the source text.
+- Do not convert relative temporal phrases like `the day following`, `the next following day`, `the first day of the next benefit week`, or `beginning with the day following ...` into invented numeric offset or ordinal scalars like `1`, `first_*_ordinal`, or `*_offset = 1` unless the source text itself states that number explicitly.
 - For carve-outs phrased like `except where paragraph (b) applies`, treat the carve-out as displacing this slice. When the carve-out condition is true, this slice should evaluate false or be otherwise inoperative; do not treat the slice as automatically satisfied just because the exception applies.
 - For exclusion-list leaves phrased like `all income is qualifying income except ... which is not to be treated as qualifying income`, do not collapse the principal output to an unconditional `true` or `false`. Encode either the excluded amount itself or a fact-sensitive classification that changes with the source-stated subject/input.
 - In `.rac.test`, use helper/input names that expose the actual legal facts from the source text. Prefer names like `child_benefit_is_only_person`, `child_benefit_is_elder_or_eldest_person`, `claimant_has_partner`, `is_single_claimant`, `is_joint_claimant`, `resident_in_greater_london`, or `responsible_for_child_or_qualifying_young_person`.
 - In `.rac.test`, avoid opaque placeholders like `*_condition`, `*_eligibility_flag`, or `family_has_partner` when a more direct legal-fact name is available from the source text.
-- For provisions phrased like `Where X, Y must ...`, encode the triggered requirement itself. Include a `.rac.test` case where `X` is false; unless `./source.txt` expressly says otherwise, the requirement should evaluate as satisfied or inapplicable rather than false in that case.
+- For whole-provision slices phrased like `Where X, Y must ...`, encode the triggered requirement itself. Include a `.rac.test` case where `X` is false; unless `./source.txt` expressly says otherwise, the requirement should evaluate as satisfied or inapplicable rather than false in that case.
 - When a boolean output ultimately depends on a final fact-shaped input and the source text makes a meaningful false case possible, include a `.rac.test` case where the applicability conditions hold but that final fact input is false.
 - In `.rac.test`, choose periods on or after the explicit effective date in `./source.txt`.
 - Do not add speculative future-period tests that would rely on uprating, later amendments, or rates not stated in `./source.txt`.
+- Reference RAC variables by bare name inside formulas. Do not write function-style calls like `some_variable(person, period)`.
 """
     single_amount_row_guidance = ""
     if single_amount_table_slice:
@@ -2124,6 +2144,7 @@ Rules:
 - Every substantive numeric occurrence in `./source.txt` must be represented by a named scalar definition in RAC, even when the same numeric value repeats.
 - If the same numeric value appears twice in materially different legal roles, declare separate named scalar variables for those separate occurrences instead of reusing a single scalar everywhere.
 - If a legal scalar amount, threshold, cap, or limit appears in a formula or conditional branch, first declare it as its own named variable and then reference that variable from the formula.
+- Once you declare a substantive numeric scalar, reuse that named scalar everywhere the rule compares against or computes with that number; do not restate the raw literal inline in formulas, comparisons, or tests.
 - If `./source.txt` says someone is "aged 18 or over", "under 25", or gives another numeric eligibility threshold, model that threshold as a named scalar variable rather than only burying the number inside a helper name.
 - Do not create scalar variables for citation numbers that only appear inside section, paragraph, regulation, schedule, or similar legal cross-references.
 - Do not invent `dtype: String` variables just to restate the effective date or to hold quoted date text from `./source.txt`.

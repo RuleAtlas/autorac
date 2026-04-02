@@ -1184,6 +1184,62 @@ award_effective_before_year_threshold:
         assert result.passed is False
         assert any("Decomposed date scalar" in issue for issue in result.issues)
 
+    def test_ci_allows_duration_scalars_even_when_source_mentions_dates(self, pipeline):
+        """Duration quantities like 12 months should not be treated as split calendar dates."""
+        rac_file = pipeline.rac_us_path / "uk" / "leaf.rac"
+        rac_file.parent.mkdir(parents=True, exist_ok=True)
+        rac_file.write_text(
+            '''
+"""
+Applies before 6th April 2016 where the period of 12 months has elapsed.
+"""
+
+status: encoded
+
+twelve_month_period:
+    entity: Person
+    period: Day
+    dtype: Count
+    from 2025-03-21:
+        12
+'''
+        )
+
+        result = pipeline._run_ci(rac_file)
+
+        assert result.passed is True
+        assert not any("Decomposed date scalar" in issue for issue in result.issues)
+
+    def test_ci_rejects_function_style_variable_calls(self, pipeline):
+        rac_file = pipeline.rac_us_path / "uk" / "leaf.rac"
+        rac_file.parent.mkdir(parents=True, exist_ok=True)
+        rac_file.write_text(
+            '''
+"""
+Where the assessed amount comprises income from capital, it shall be deemed to increase.
+"""
+
+status: encoded
+
+assessed_amount_comprises_income_from_capital:
+    entity: Person
+    period: Day
+    dtype: Boolean
+
+assessed_amount_deemed_increase:
+    entity: Person
+    period: Day
+    dtype: Boolean
+    from 2025-03-21:
+        assessed_amount_comprises_income_from_capital(person, period)
+'''
+        )
+
+        result = pipeline._run_ci(rac_file)
+
+        assert result.passed is False
+        assert any("Function-style variable reference" in issue for issue in result.issues)
+
     def test_ci_allows_numeric_age_threshold_scalars(self, pipeline):
         """CI should allow substantive age thresholds represented as named scalars."""
         rac_file = pipeline.rac_us_path / "uk" / "leaf.rac"
@@ -1638,6 +1694,8 @@ class TestRunReviewer:
             assert "Benchmark artifact path is generic." in call_prompt
             assert "Companion Test File" in call_prompt
             assert "- name: base" in call_prompt
+            assert "File: benchmark artifact (.rac)" in call_prompt
+            assert str(temp_rac_file) not in call_prompt
 
     def test_ci_flags_except_where_carve_outs_treated_as_satisfied(self, pipeline, temp_rac_file):
         temp_rac_file.write_text(
@@ -1716,7 +1774,7 @@ assessed_income_period_10_2_a_satisfied:
     def test_generalist_reviewer_uses_holistic_prompt(self, pipeline, temp_rac_file):
         with patch("autorac.harness.validator_pipeline.run_claude_code") as mock_claude:
             mock_claude.return_value = (
-                '{"score": 7.0, "passed": true, "issues": [], "reasoning": "ok"}',
+                '{"score": 7.0, "passed": true, "blocking_issues": [], "non_blocking_issues": [], "reasoning": "ok"}',
                 0,
             )
             pipeline._run_reviewer("generalist-reviewer", temp_rac_file)
@@ -1724,6 +1782,34 @@ assessed_income_period_10_2_a_satisfied:
             assert "senior statutory-fidelity reviewer" in call_prompt
             assert "No semantic compression" in call_prompt
             assert "atomic source slice or branch leaf" in call_prompt
+            assert "Only place substantive statutory-fidelity defects in `blocking_issues`" in call_prompt
+
+    def test_generalist_reviewer_separates_blocking_and_non_blocking_issues(
+        self, pipeline, temp_rac_file
+    ):
+        with patch("autorac.harness.validator_pipeline.run_claude_code") as mock_claude:
+            mock_claude.return_value = (
+                '{"score": 7.0, "passed": true, "blocking_issues": [], '
+                '"non_blocking_issues": ["minor naming cleanup"], "reasoning": "ok"}',
+                0,
+            )
+            result = pipeline._run_reviewer("generalist-reviewer", temp_rac_file)
+            assert result.passed is True
+            assert result.score == 7.0
+            assert result.issues == ["[non-blocking] minor naming cleanup"]
+
+    def test_generalist_reviewer_derives_pass_from_blocking_issues(
+        self, pipeline, temp_rac_file
+    ):
+        with patch("autorac.harness.validator_pipeline.run_claude_code") as mock_claude:
+            mock_claude.return_value = (
+                '{"score": 6.0, "blocking_issues": [], '
+                '"non_blocking_issues": ["possible import"], "reasoning": "ok"}',
+                0,
+            )
+            result = pipeline._run_reviewer("generalist-reviewer", temp_rac_file)
+            assert result.passed is True
+            assert result.issues == ["[non-blocking] possible import"]
 
     def test_reviewer_unknown_type(self, pipeline, temp_rac_file):
         """Unknown reviewer type uses 'overall quality' focus."""

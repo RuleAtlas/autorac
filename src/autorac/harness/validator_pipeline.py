@@ -78,6 +78,21 @@ Output your review as JSON:
 }
 """
 
+_GENERALIST_REVIEW_JSON_FORMAT = """
+Output your review as JSON:
+{
+  "score": <float 1-10>,
+  "passed": <boolean>,
+  "blocking_issues": ["issue1", "issue2"],
+  "non_blocking_issues": ["issue3", "issue4"],
+  "reasoning": "<brief explanation>"
+}
+
+Use `passed: true` when the encoding is safe to promote even if there are minor cleanup notes.
+Only place substantive statutory-fidelity defects in `blocking_issues`.
+Place minor naming cleanups, dead code, test naming nits, or possible-but-uncertain import suggestions in `non_blocking_issues`.
+"""
+
 RAC_REVIEWER_PROMPT = (
     """You are an expert RAC (Rules as Code) reviewer specializing in structure and legal citations.
 
@@ -147,8 +162,15 @@ Review the file holistically for:
 5. **Fact modeling**: Factual predicates are modeled as inputs or canonical imports, not hard-coded booleans or deferred placeholders.
 6. **Entity / period / dtype plausibility**: Core variables use a coherent ontology for the rule being encoded.
 7. **Tests reflect applicability**: Tests cover both applicable and inapplicable branches when the source text makes them meaningful.
+8. **Blocking threshold**: Fail only for substantive fidelity defects that would make promotion unsafe. Minor cleanup notes, naming issues, dead code, or arguably missing-but-uncertain imports are non-blocking.
+
+Scoring rubric:
+- 9-10: strong, promotion-ready
+- 7-8: promotion-ready with only non-blocking issues
+- 5-6: material concerns remain
+- 1-4: unsafe / seriously incorrect
 """
-    + _REVIEW_JSON_FORMAT
+    + _GENERALIST_REVIEW_JSON_FORMAT
 )
 
 GROUNDING_VALUE_PATTERN = re.compile(
@@ -226,6 +248,18 @@ _MONTH_NAME_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _ORDINAL_NUMBER_PATTERN = re.compile(r"\b(\d+)(?:st|nd|rd|th)\b", re.IGNORECASE)
+_DATE_DECOMPOSITION_CUE_TOKENS = {
+    "date",
+    "birthday",
+    "anniversary",
+    "threshold",
+    "cutoff",
+    "effective",
+    "calendar",
+    "commencement",
+    "start",
+    "end",
+}
 
 
 @dataclass(frozen=True)
@@ -985,6 +1019,8 @@ class ValidatorPipeline:
         with contextlib.suppress(Exception):
             issues.extend(self._check_branch_specific_output_names(rac_file))
         with contextlib.suppress(Exception):
+            issues.extend(self._check_function_style_variable_calls(rac_file))
+        with contextlib.suppress(Exception):
             issues.extend(self._check_exclusion_list_principal_outputs(rac_file))
         with contextlib.suppress(Exception):
             issues.extend(self._check_placeholder_fact_variables(rac_file))
@@ -1239,6 +1275,8 @@ class ValidatorPipeline:
         issues: list[str] = []
         for occurrence in extract_named_scalar_occurrences(content):
             tokens = set(occurrence.name.lower().split("_"))
+            if not (_DATE_DECOMPOSITION_CUE_TOKENS & tokens):
+                continue
             if "year" in tokens and occurrence.value.is_integer() and 1900 <= occurrence.value <= 2100:
                 issues.append(
                     "Decomposed date scalar: "
@@ -1286,6 +1324,30 @@ class ValidatorPipeline:
             f"source text targets branch ({expected_branch}), but the principal output "
             f"`{principal_name}` does not encode that deepest branch token"
         ]
+
+    def _check_function_style_variable_calls(self, rac_file: Path) -> list[str]:
+        """Flag variable references that incorrectly use function-call syntax."""
+        content = rac_file.read_text()
+        defined_symbols = set(self._extract_defined_symbols(content))
+        if not defined_symbols:
+            return []
+
+        issues: list[str] = []
+        for block in self._extract_definition_blocks(content):
+            for offset, line in enumerate(block["body_lines"], start=1):
+                stripped = line.strip()
+                if not stripped or stripped.endswith(":"):
+                    continue
+                for symbol in defined_symbols:
+                    if symbol == block["name"]:
+                        continue
+                    if re.search(rf"\b{re.escape(symbol)}\s*\(", stripped):
+                        issues.append(
+                            "Function-style variable reference: "
+                            f"{block['name']} line {block['line'] + offset} calls `{symbol}(...)`; "
+                            "reference RAC variables by bare name instead of function-call syntax"
+                        )
+        return issues
 
     def _check_exclusion_list_principal_outputs(self, rac_file: Path) -> list[str]:
         """Flag exclusion-list leaves whose principal output collapses to a constant."""
@@ -1710,7 +1772,7 @@ class ValidatorPipeline:
 
 Review this encoding holistically.
 
-File: {rac_file}
+File: benchmark artifact (.rac)
 
 Content:
 {rac_content[:6000]}{"..." if len(rac_content) > 6000 else ""}
@@ -1754,8 +1816,34 @@ Output ONLY valid JSON:
                 raise ValueError("No JSON found in output")
 
             score = float(data.get("score", 5.0))
-            passed = bool(data.get("passed", score >= 7.0))
-            issues = data.get("issues", [])
+            if reviewer_type == "generalist-reviewer":
+                blocking_issues = data.get("blocking_issues", [])
+                non_blocking_issues = data.get("non_blocking_issues", [])
+                if not isinstance(blocking_issues, list):
+                    blocking_issues = [str(blocking_issues)]
+                if not isinstance(non_blocking_issues, list):
+                    non_blocking_issues = [str(non_blocking_issues)]
+
+                if "passed" in data:
+                    passed = bool(data["passed"])
+                elif "blocking_issues" in data:
+                    passed = len(blocking_issues) == 0
+                else:
+                    passed = score >= 7.0
+
+                legacy_issues = data.get("issues", [])
+                if not isinstance(legacy_issues, list):
+                    legacy_issues = [str(legacy_issues)]
+                issues = list(blocking_issues)
+                issues.extend(
+                    f"[non-blocking] {issue}" for issue in non_blocking_issues
+                )
+                for issue in legacy_issues:
+                    if issue not in issues:
+                        issues.append(issue)
+            else:
+                passed = bool(data.get("passed", score >= 7.0))
+                issues = data.get("issues", [])
 
             duration = int((time.time() - start) * 1000)
 

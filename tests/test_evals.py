@@ -361,6 +361,85 @@ example_amount:
         mock_reviewer.assert_called_once()
         assert mock_reviewer.call_args.args[0] == "generalist-reviewer"
         assert "atomic source slice" in mock_reviewer.call_args.kwargs["review_context"]
+        assert "stale, generic, or misleading" in mock_reviewer.call_args.kwargs["review_context"]
+
+    def test_timing_clause_review_context_mentions_boolean_day_predicate(self, tmp_path):
+        rac_file = tmp_path / "example.rac"
+        rac_file.write_text(
+            '''"""
+On the first day of the next benefit week.
+"""
+status: encoded
+
+example_timing_rule:
+    entity: Person
+    period: Day
+    dtype: Boolean
+    from 2025-01-01:
+        true
+'''
+        )
+
+        compile_result = ValidationResult("compile", True, issues=[])
+        ci_result = ValidationResult("ci", True, issues=[])
+        reviewer_result = ValidationResult(
+            "generalist-reviewer",
+            True,
+            score=8.0,
+            issues=[],
+        )
+
+        with (
+            patch.object(
+                ValidatorPipeline, "_run_compile_check", return_value=compile_result
+            ),
+            patch.object(ValidatorPipeline, "_run_ci", return_value=ci_result),
+            patch.object(
+                ValidatorPipeline, "_run_reviewer", return_value=reviewer_result
+            ) as mock_reviewer,
+        ):
+            evaluate_artifact(
+                rac_file=rac_file,
+                rac_root=tmp_path,
+                rac_path=Path("/tmp/rac"),
+                source_text="On the first day of the next benefit week.",
+            )
+
+        assert (
+            "boolean day-predicate helper"
+            in mock_reviewer.call_args.kwargs["review_context"]
+        )
+
+    def test_build_eval_prompt_for_uk_timing_leaf_discourages_invented_day_offsets(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/regulation/10",
+            runner=parse_runner_spec("openai:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text=(
+                "Where the assessed amount comprises income from capital, it shall be "
+                "deemed to increase or decrease on the first day of the next benefit "
+                "week to commence on or after the day on which the income increases "
+                "or decreases."
+            ),
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2002/1792/regulation/10",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2002-1792-regulation-10.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "Do not convert relative temporal phrases" in prompt
+        assert "`*_offset = 1`" in prompt
 
     def test_build_eval_prompt_for_atomic_conjunctive_branch_discourages_normative_names(
         self, tmp_path
@@ -1593,8 +1672,8 @@ class TestUkLegislationFetch:
         mock_run.assert_called_once()
         assert mock_run.call_args.kwargs["section_eid"] == "section-1"
         assert mock_run.call_args.kwargs["source_id"] == "ukpga/2010/1/section/1"
-        assert mock_run.call_args.kwargs["oracle"] == "policyengine"
-        assert mock_run.call_args.kwargs["policyengine_country"] == "uk"
+        assert mock_run.call_args.kwargs["oracle"] == "none"
+        assert mock_run.call_args.kwargs["policyengine_country"] == "auto"
 
 
 class TestEvalPrompt:
@@ -1964,6 +2043,7 @@ class TestEvalPrompt:
 
         assert "Every substantive numeric occurrence in `./source.txt` must be represented by a named scalar definition in RAC" in prompt
         assert "If the same numeric value appears twice in materially different legal roles" in prompt
+        assert "reuse that named scalar everywhere the rule compares against or computes with that number" in prompt
         assert 'If `./source.txt` says someone is "aged 18 or over", "under 25"' in prompt
         assert "Do not create scalar variables for citation numbers" in prompt
         assert "Do not invent `dtype: String` variables just to restate the effective date" in prompt
@@ -2482,6 +2562,43 @@ cases:
 
         assert results == [uk_result]
         assert mock_uk.call_args.kwargs["table_row_query"] == "single claimant aged under 25"
+
+    def test_run_eval_suite_passes_oracle_settings_to_uk_runner(self, tmp_path):
+        manifest_file = tmp_path / "suite.yaml"
+        manifest_file.write_text(
+            """
+name: UK oracle suite
+runners:
+  - openai:gpt-5.4
+cases:
+  - kind: uk_legislation
+    name: regulation-2-1-a
+    source_ref: /uksi/2006/965/regulation/2/2025-04-07
+    section_eid: regulation-2-1-a
+    oracle: none
+    policyengine_country: auto
+            """.strip()
+        )
+        manifest = load_eval_suite_manifest(manifest_file)
+        uk_result = _fake_eval_result("openai-gpt-5.4", "regulation-2-1-a")
+
+        with patch(
+            "autorac.harness.evals._validate_uk_shared_scalar_sibling_sets",
+            return_value=None,
+        ), patch(
+            "autorac.harness.evals.run_legislation_gov_uk_section_eval",
+            return_value=[uk_result],
+        ) as mock_uk:
+            results = run_eval_suite(
+                manifest=manifest,
+                output_root=tmp_path / "out",
+                rac_path=tmp_path / "rac",
+                atlas_path=None,
+            )
+
+        assert results == [uk_result]
+        assert mock_uk.call_args.kwargs["oracle"] == "none"
+        assert mock_uk.call_args.kwargs["policyengine_country"] == "auto"
 
     def test_run_eval_suite_passes_shared_fetch_cache_root_to_uk_runner(
         self, tmp_path
