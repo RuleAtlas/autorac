@@ -12,8 +12,11 @@ Self-contained -- no external plugin dependencies.
 """
 
 import argparse
+import csv
 import json
+import os
 import sys
+from dataclasses import asdict, is_dataclass
 from pathlib import Path
 
 from .harness.encoding_db import (
@@ -24,10 +27,109 @@ from .harness.encoding_db import (
     ReviewResult,
     ReviewResults,
 )
+from .harness.evals import (
+    load_eval_suite_manifest,
+    run_akn_section_eval,
+    run_eval_suite,
+    run_legislation_gov_uk_section_eval,
+    run_model_eval,
+    run_source_eval,
+    summarize_readiness,
+)
 from .harness.validator_pipeline import ValidatorPipeline
+from .statute import parse_usc_citation
 
 # Default DB path - can be overridden with --db
 DEFAULT_DB = Path.home() / "RulesFoundation" / "autorac" / "encodings.db"
+
+
+def _resolve_repo_checkout(name: str) -> Path:
+    """Resolve sibling foundation repos before falling back to legacy defaults."""
+    workspace_root = Path(__file__).resolve().parents[3]
+    candidates = [
+        workspace_root / name,
+        Path.home() / "TheAxiomFoundation" / name,
+        Path.home() / "RulesFoundation" / name,
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate.resolve()
+    return candidates[-1]
+
+
+def _reviewer_score_map(scores) -> dict[str, float | None]:
+    """Normalize reviewer scores from either legacy flat attrs or ReviewResults.reviews."""
+    reviewer_names = [
+        "rac_reviewer",
+        "formula_reviewer",
+        "parameter_reviewer",
+        "integration_reviewer",
+    ]
+    values = {name: getattr(scores, name, None) for name in reviewer_names}
+
+    for review in getattr(scores, "reviews", []) or []:
+        name = getattr(review, "reviewer", "")
+        if name not in values:
+            continue
+        checked = getattr(review, "items_checked", 0) or 0
+        passed = getattr(review, "items_passed", 0) or 0
+        if checked > 0:
+            values[name] = round(passed / checked * 10, 1)
+        else:
+            values[name] = 10.0 if getattr(review, "passed", False) else 0.0
+
+    return values
+
+
+def _add_gpt_backend_argument(parser: argparse.ArgumentParser) -> None:
+    """Add a GPT backend override for local-vs-API runner selection."""
+    parser.add_argument(
+        "--gpt-backend",
+        choices=["codex", "openai"],
+        default=None,
+        help=(
+            "Override GPT runner backend for evals. "
+            "Use 'codex' locally to route gpt-* runners through Codex CLI/ChatGPT, "
+            "or 'openai' to force API-backed Responses runs. "
+            "Defaults to the AUTORAC_GPT_BACKEND env var when set."
+        ),
+    )
+
+
+def _resolved_gpt_backend(args) -> str | None:
+    """Resolve the requested GPT backend override from args/env."""
+    return getattr(args, "gpt_backend", None) or os.getenv("AUTORAC_GPT_BACKEND") or None
+
+
+def _rewrite_gpt_runner_backend(spec: str, backend: str | None) -> str:
+    """Rewrite gpt-* runner specs onto the requested backend, preserving aliases."""
+    if backend not in {"codex", "openai"}:
+        return spec
+
+    alias = ""
+    target = spec
+    if "=" in spec:
+        alias, target = spec.split("=", 1)
+
+    if ":" not in target:
+        return spec
+
+    current_backend, model = target.split(":", 1)
+    current_backend = current_backend.strip()
+    model = model.strip()
+    if current_backend not in {"codex", "openai"}:
+        return spec
+    if not model.startswith("gpt-"):
+        return spec
+
+    rewritten = f"{backend}:{model}"
+    return f"{alias}={rewritten}" if alias else rewritten
+
+
+def _effective_runner_specs(specs: list[str], args) -> list[str]:
+    """Apply GPT backend override to a runner list."""
+    backend = _resolved_gpt_backend(args)
+    return [_rewrite_gpt_runner_backend(spec, backend) for spec in specs]
 
 
 def main():
@@ -206,15 +308,330 @@ def main():
     encode_parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     encode_parser.add_argument(
         "--backend",
-        choices=["cli", "api"],
+        choices=["cli", "api", "openai"],
         default="cli",
-        help="Backend: 'cli' uses Claude Code CLI (no API key), 'api' uses Agent SDK (requires ANTHROPIC_API_KEY)",
+        help=(
+            "Backend: 'cli' uses Claude Code CLI (no API key), "
+            "'api' uses Anthropic API (requires ANTHROPIC_API_KEY), "
+            "'openai' uses OpenAI Responses API (requires OPENAI_API_KEY)"
+        ),
     )
     encode_parser.add_argument(
         "--atlas-path",
         type=Path,
         default=None,
         help="Path to atlas repo (default: ATLAS_PATH env var or ~/RulesFoundation/atlas)",
+    )
+
+    # eval command - run deterministic model comparisons on one or more citations
+    eval_parser = subparsers.add_parser(
+        "eval", help="Compare model runners on one or more citations"
+    )
+    eval_parser.add_argument("citations", nargs="+", help="Citation(s) to encode")
+    eval_parser.add_argument(
+        "--runner",
+        action="append",
+        default=[],
+        help="Runner spec [name=]backend:model. Defaults to claude:opus and codex:gpt-5.4",
+    )
+    _add_gpt_backend_argument(eval_parser)
+    eval_parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("/tmp/autorac-evals"),
+        help="Directory for eval artifacts and traces",
+    )
+    eval_parser.add_argument(
+        "--atlas-path",
+        type=Path,
+        default=None,
+        help="Path to atlas repo (defaults to sibling repo checkout)",
+    )
+    eval_parser.add_argument(
+        "--rac-path",
+        type=Path,
+        default=None,
+        help="Path to rac repo (defaults to sibling repo checkout)",
+    )
+    eval_parser.add_argument(
+        "--mode",
+        choices=["cold", "repo-augmented"],
+        default="repo-augmented",
+        help="Whether the eval gets only source text or a logged bundle of repo precedent files",
+    )
+    eval_parser.add_argument(
+        "--allow-context",
+        action="append",
+        default=[],
+        help="Extra file path to copy into the repo-augmented eval workspace (repeatable)",
+    )
+    eval_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit machine-readable JSON summary",
+    )
+
+    eval_source_parser = subparsers.add_parser(
+        "eval-source",
+        help="Compare model runners on one arbitrary source-text slice",
+    )
+    eval_source_parser.add_argument("source_id", help="Logical identifier for the source slice")
+    eval_source_parser.add_argument(
+        "source_file",
+        type=Path,
+        help="Path to a text file containing the authoritative source text",
+    )
+    eval_source_parser.add_argument(
+        "--runner",
+        action="append",
+        default=[],
+        help="Runner spec [name=]backend:model. Defaults to claude:opus and codex:gpt-5.4",
+    )
+    _add_gpt_backend_argument(eval_source_parser)
+    eval_source_parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("/tmp/autorac-evals"),
+        help="Directory for eval artifacts and traces",
+    )
+    eval_source_parser.add_argument(
+        "--rac-path",
+        type=Path,
+        default=None,
+        help="Path to rac repo (defaults to sibling repo checkout)",
+    )
+    eval_source_parser.add_argument(
+        "--mode",
+        choices=["cold", "repo-augmented"],
+        default="repo-augmented",
+        help="Whether the eval gets only source text or a logged bundle of explicit precedent files",
+    )
+    eval_source_parser.add_argument(
+        "--allow-context",
+        action="append",
+        default=[],
+        help="Extra file path to copy into the repo-augmented eval workspace (repeatable)",
+    )
+    eval_source_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit machine-readable JSON summary",
+    )
+    eval_source_parser.add_argument(
+        "--policyengine-rac-var-hint",
+        default=None,
+        help="Canonical RAC variable name to use as the PolicyEngine oracle target for this source slice",
+    )
+
+    eval_akn_section_parser = subparsers.add_parser(
+        "eval-akn-section",
+        help="Compare model runners on one section extracted from Akoma Ntoso XML",
+    )
+    eval_akn_section_parser.add_argument(
+        "source_id",
+        help="Logical identifier for the source section",
+    )
+    eval_akn_section_parser.add_argument(
+        "akn_file",
+        type=Path,
+        help="Path to an Akoma Ntoso XML document",
+    )
+    eval_akn_section_parser.add_argument(
+        "section_eid",
+        help="eId of the AKN hcontainer section to extract",
+    )
+    eval_akn_section_parser.add_argument(
+        "--allow-parent",
+        action="store_true",
+        help="Allow encoding a parent section even when atomic child sections exist",
+    )
+    eval_akn_section_parser.add_argument(
+        "--table-row-query",
+        default=None,
+        help="Filter extracted section tables down to the matching row plus local table context",
+    )
+    eval_akn_section_parser.add_argument(
+        "--runner",
+        action="append",
+        default=[],
+        help="Runner spec [name=]backend:model. Defaults to claude:opus and codex:gpt-5.4",
+    )
+    _add_gpt_backend_argument(eval_akn_section_parser)
+    eval_akn_section_parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("/tmp/autorac-evals"),
+        help="Directory for eval artifacts and traces",
+    )
+    eval_akn_section_parser.add_argument(
+        "--rac-path",
+        type=Path,
+        default=None,
+        help="Path to rac repo (defaults to sibling repo checkout)",
+    )
+    eval_akn_section_parser.add_argument(
+        "--mode",
+        choices=["cold", "repo-augmented"],
+        default="repo-augmented",
+        help="Whether the eval gets only extracted section text or a logged bundle of explicit precedent files",
+    )
+    eval_akn_section_parser.add_argument(
+        "--allow-context",
+        action="append",
+        default=[],
+        help="Extra file path to copy into the repo-augmented eval workspace (repeatable)",
+    )
+    eval_akn_section_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit machine-readable JSON summary",
+    )
+    eval_akn_section_parser.add_argument(
+        "--policyengine-rac-var-hint",
+        default=None,
+        help="Canonical RAC variable name to use as the PolicyEngine oracle target for this section",
+    )
+
+    eval_uk_legislation_parser = subparsers.add_parser(
+        "eval-uk-legislation-section",
+        help="Fetch official legislation.gov.uk XML and compare model runners on one UK AKN section",
+    )
+    eval_uk_legislation_parser.add_argument(
+        "source_ref",
+        help="legislation.gov.uk URL or site-relative path",
+    )
+    eval_uk_legislation_parser.add_argument(
+        "--section-eid",
+        default=None,
+        help="eId of the AKN section to extract. If omitted, use the sole top-level section from the fetched AKN document.",
+    )
+    eval_uk_legislation_parser.add_argument(
+        "--allow-parent",
+        action="store_true",
+        help="Allow encoding a parent section even when atomic child sections exist",
+    )
+    eval_uk_legislation_parser.add_argument(
+        "--table-row-query",
+        default=None,
+        help="Filter extracted section tables down to the matching row plus local table context",
+    )
+    eval_uk_legislation_parser.add_argument(
+        "--runner",
+        action="append",
+        default=[],
+        help="Runner spec [name=]backend:model. Defaults to claude:opus and codex:gpt-5.4",
+    )
+    _add_gpt_backend_argument(eval_uk_legislation_parser)
+    eval_uk_legislation_parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("/tmp/autorac-evals"),
+        help="Directory for fetched sources, eval artifacts, and traces",
+    )
+    eval_uk_legislation_parser.add_argument(
+        "--rac-path",
+        type=Path,
+        default=None,
+        help="Path to rac repo (defaults to sibling repo checkout)",
+    )
+    eval_uk_legislation_parser.add_argument(
+        "--mode",
+        choices=["cold", "repo-augmented"],
+        default="repo-augmented",
+        help="Whether the eval gets only extracted section text or a logged bundle of explicit precedent files",
+    )
+    eval_uk_legislation_parser.add_argument(
+        "--allow-context",
+        action="append",
+        default=[],
+        help="Extra file path to copy into the repo-augmented eval workspace (repeatable)",
+    )
+    eval_uk_legislation_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit machine-readable JSON summary",
+    )
+    eval_uk_legislation_parser.add_argument(
+        "--policyengine-rac-var-hint",
+        default=None,
+        help="Canonical RAC variable name to use as the PolicyEngine oracle target for this section",
+    )
+
+    eval_suite_parser = subparsers.add_parser(
+        "eval-suite",
+        help="Run a manifest-driven benchmark suite and evaluate readiness gates",
+    )
+    eval_suite_parser.add_argument(
+        "manifest",
+        type=Path,
+        help="Path to a YAML manifest describing the benchmark suite",
+    )
+    eval_suite_parser.add_argument(
+        "--runner",
+        action="append",
+        default=[],
+        help="Override manifest runners with [name=]backend:model (repeatable)",
+    )
+    _add_gpt_backend_argument(eval_suite_parser)
+    eval_suite_parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("/tmp/autorac-suite-evals"),
+        help="Directory for suite artifacts and traces",
+    )
+    eval_suite_parser.add_argument(
+        "--atlas-path",
+        type=Path,
+        default=None,
+        help="Path to atlas repo (needed for citation cases; defaults to sibling repo checkout)",
+    )
+    eval_suite_parser.add_argument(
+        "--rac-path",
+        type=Path,
+        default=None,
+        help="Path to rac repo (defaults to sibling repo checkout)",
+    )
+    eval_suite_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit machine-readable JSON summary",
+    )
+
+    eval_suite_report_parser = subparsers.add_parser(
+        "eval-suite-report",
+        help="Render a paper-ready comparison report from eval-suite JSON output",
+    )
+    eval_suite_report_parser.add_argument(
+        "result_json",
+        type=Path,
+        help="Path to JSON emitted by `autorac eval-suite --json`",
+    )
+    eval_suite_report_parser.add_argument(
+        "--left-runner",
+        default=None,
+        help="Runner name to treat as the left column (defaults to first runner in the payload)",
+    )
+    eval_suite_report_parser.add_argument(
+        "--right-runner",
+        default=None,
+        help="Runner name to treat as the right column (defaults to second runner in the payload)",
+    )
+    eval_suite_report_parser.add_argument(
+        "--markdown-out",
+        type=Path,
+        default=None,
+        help="Optional path to write the rendered Markdown report",
+    )
+    eval_suite_report_parser.add_argument(
+        "--csv-out",
+        type=Path,
+        default=None,
+        help="Optional path to write a case-level comparison CSV",
+    )
+    eval_suite_report_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit machine-readable JSON summary instead of Markdown",
     )
 
     # =========================================================================
@@ -319,6 +736,18 @@ def main():
         cmd_coverage(args)
     elif args.command == "encode":
         cmd_encode(args)
+    elif args.command == "eval":
+        cmd_eval(args)
+    elif args.command == "eval-source":
+        cmd_eval_source(args)
+    elif args.command == "eval-akn-section":
+        cmd_eval_akn_section(args)
+    elif args.command == "eval-uk-legislation-section":
+        cmd_eval_uk_legislation_section(args)
+    elif args.command == "eval-suite":
+        cmd_eval_suite(args)
+    elif args.command == "eval-suite-report":
+        cmd_eval_suite_report(args)
     elif args.command == "session-start":
         cmd_session_start(args)
     elif args.command == "session-end":
@@ -356,8 +785,8 @@ def cmd_validate(args):
         rac_us = rac_us.parent
 
     if rac_us.name != "rac-us":
-        rac_us = Path.home() / "RulesFoundation" / "rac-us"
-        rac_path = Path.home() / "RulesFoundation" / "rac"
+        rac_us = _resolve_repo_checkout("rac-us")
+        rac_path = _resolve_repo_checkout("rac")
     else:
         rac_path = rac_us.parent / "rac"
 
@@ -370,8 +799,18 @@ def cmd_validate(args):
         enable_oracles=enable_oracles,
     )
 
-    result = pipeline.validate(rac_file)
+    result = pipeline.validate(rac_file, skip_reviewers=args.skip_reviewers)
     scores = result.to_actual_scores()
+    review_scores = (
+        {
+            "rac_reviewer": None,
+            "formula_reviewer": None,
+            "parameter_reviewer": None,
+            "integration_reviewer": None,
+        }
+        if args.skip_reviewers
+        else _reviewer_score_map(scores)
+    )
 
     errors = []
     for name, vr in result.results.items():
@@ -407,10 +846,10 @@ def cmd_validate(args):
             "file": str(rac_file),
             "ci_pass": result.ci_pass,
             "scores": {
-                "rac_reviewer": scores.rac_reviewer,
-                "formula_reviewer": scores.formula_reviewer,
-                "parameter_reviewer": scores.parameter_reviewer,
-                "integration_reviewer": scores.integration_reviewer,
+                "rac_reviewer": review_scores["rac_reviewer"],
+                "formula_reviewer": review_scores["formula_reviewer"],
+                "parameter_reviewer": review_scores["parameter_reviewer"],
+                "integration_reviewer": review_scores["integration_reviewer"],
             },
             "oracle_scores": {
                 "policyengine": scores.policyengine_match,
@@ -429,7 +868,11 @@ def cmd_validate(args):
         print(f"CI: {'✓' if result.ci_pass else '✗'}")
         if not args.skip_reviewers:
             print(
-                f"Scores: RAC {scores.rac_reviewer}/10 | Formula {scores.formula_reviewer}/10 | Param {scores.parameter_reviewer}/10 | Integration {scores.integration_reviewer}/10"
+                "Scores: "
+                f"RAC {review_scores['rac_reviewer']}/10 | "
+                f"Formula {review_scores['formula_reviewer']}/10 | "
+                f"Param {review_scores['parameter_reviewer']}/10 | "
+                f"Integration {review_scores['integration_reviewer']}/10"
             )
         if args.oracle:
             pe_score = scores.policyengine_match
@@ -1336,28 +1779,19 @@ def cmd_encode(args):
     import asyncio
     from datetime import datetime
 
+    from . import __version__
     from .harness.orchestrator import Orchestrator
 
-    # Parse citation to get output path
-    # Keep original case for subsection letters (a), (b), etc.
-    citation = (
-        args.citation.replace("USC", "").replace("usc", "").replace("§", "").strip()
-    )
-    parts = citation.split()
-    if len(parts) >= 2:
-        title = parts[0]
-        section = parts[1]
-    else:
-        path_parts = citation.replace(" ", "/").split("/")
-        title = path_parts[0]
-        section = "/".join(path_parts[1:])
-
-    output_path = args.output / title / section.replace("(", "/").replace(")", "")
+    citation_parts = parse_usc_citation(args.citation)
+    output_path = args.output / citation_parts.title / citation_parts.section
+    if citation_parts.fragments[:-1]:
+        output_path /= Path(*citation_parts.fragments[:-1])
 
     print(f"=== Encoding: {args.citation} ===")
     print(f"Output: {output_path}")
     print(f"Backend: {args.backend}")
     print(f"Model: {args.model}")
+    print(f"AutoRAC: {__version__}")
     print(f"DB: {args.db}")
     print()
 
@@ -1405,7 +1839,11 @@ def cmd_encode(args):
         print(
             f"Total tokens: {run.total_tokens.input_tokens:,} in + {run.total_tokens.output_tokens:,} out"
         )
-        print(f"Estimated cost: ${run.total_tokens.estimated_cost_usd:.2f}")
+        cost = getattr(run, "total_cost_usd", None)
+        if isinstance(cost, (int, float)) and cost > 0:
+            print(f"Estimated cost: ${cost:.2f}")
+        else:
+            print(f"Estimated cost: ${run.total_tokens.estimated_cost_usd:.2f}")
     if run.oracle_pe_match is not None:
         print(f"PE match: {run.oracle_pe_match}%")
     if run.oracle_taxsim_match is not None:
@@ -1427,6 +1865,826 @@ def cmd_encode(args):
     sys.exit(1 if has_errors else 0)
 
 
+def _default_repo_checkout(name: str) -> Path:
+    """Resolve sibling repo checkouts relative to this autorac repo."""
+    repo_root = Path(__file__).resolve().parents[3]
+    return repo_root / name
+
+
+def _print_eval_metrics(result) -> None:
+    """Print human-readable eval metrics when present."""
+    if not result.metrics:
+        return
+
+    print(
+        f"  compile={'yes' if result.metrics.compile_pass else 'no'} ci={'yes' if result.metrics.ci_pass else 'no'}"
+    )
+    print(
+        f"  grounded={result.metrics.grounded_numeric_count} ungrounded={result.metrics.ungrounded_numeric_count} embedded_source={'yes' if result.metrics.embedded_source_present else 'no'}"
+    )
+    if result.metrics.generalist_review_score is not None:
+        print(
+            f"  generalist_review={'yes' if result.metrics.generalist_review_pass else 'no'} score={result.metrics.generalist_review_score:.1f}/10"
+        )
+    if result.metrics.policyengine_score is not None:
+        print(
+            f"  policyengine={'yes' if result.metrics.policyengine_pass else 'no'} score={result.metrics.policyengine_score:.1%}"
+        )
+    if result.metrics.taxsim_score is not None:
+        print(
+            f"  taxsim={'yes' if result.metrics.taxsim_pass else 'no'} score={result.metrics.taxsim_score:.1%}"
+        )
+    if result.metrics.ungrounded_numeric_count:
+        offenders = [
+            item.raw for item in result.metrics.grounding if not item.grounded
+        ]
+        print(f"  ungrounded_values={', '.join(offenders[:10])}")
+
+
+def cmd_eval(args):
+    """Run deterministic model comparisons on one or more citations."""
+    runners = _effective_runner_specs(
+        args.runner or ["claude:opus", "codex:gpt-5.4"], args
+    )
+    atlas_path = args.atlas_path or _default_repo_checkout("atlas")
+    rac_path = args.rac_path or _default_repo_checkout("rac")
+
+    if not atlas_path.exists():
+        print(f"Atlas repo not found: {atlas_path}")
+        sys.exit(1)
+    if not rac_path.exists():
+        print(f"rac repo not found: {rac_path}")
+        sys.exit(1)
+
+    results = run_model_eval(
+        citations=args.citations,
+        runner_specs=runners,
+        output_root=args.output,
+        rac_path=rac_path,
+        atlas_path=atlas_path,
+        mode=args.mode,
+        extra_context_paths=[Path(path) for path in args.allow_context],
+    )
+
+    if args.json:
+        print(json.dumps([result.to_dict() for result in results], indent=2))
+        return
+
+    print(f"Output root: {args.output}")
+    print(f"Atlas: {atlas_path}")
+    print(f"rac: {rac_path}")
+    print(f"Mode: {args.mode}")
+    print()
+
+    for result in results:
+        print(f"{result.citation} [{result.runner}]")
+        print(
+            f"  success={result.success} duration_ms={result.duration_ms} cost_est=${result.estimated_cost_usd or 0:.4f}"
+        )
+        print(
+            f"  tokens in={result.input_tokens} out={result.output_tokens} cache_read={result.cache_read_tokens} reasoning_out={result.reasoning_output_tokens}"
+        )
+        print(f"  retrieved_files={len(result.retrieved_files)}")
+        if result.unexpected_accesses:
+            print(f"  unexpected_accesses={len(result.unexpected_accesses)}")
+        _print_eval_metrics(result)
+        if result.error:
+            print(f"  error={result.error}")
+        print(f"  file={result.output_file}")
+        print(f"  trace={result.trace_file}")
+        print(f"  manifest={result.context_manifest_file}")
+        print()
+
+
+def cmd_eval_source(args):
+    """Run deterministic model comparisons on one arbitrary source slice."""
+    runners = _effective_runner_specs(
+        args.runner or ["claude:opus", "codex:gpt-5.4"], args
+    )
+    rac_path = args.rac_path or _default_repo_checkout("rac")
+
+    if not rac_path.exists():
+        print(f"rac repo not found: {rac_path}")
+        sys.exit(1)
+    if not args.source_file.exists():
+        print(f"Source file not found: {args.source_file}")
+        sys.exit(1)
+
+    source_text = args.source_file.read_text()
+    results = run_source_eval(
+        source_id=args.source_id,
+        source_text=source_text,
+        runner_specs=runners,
+        output_root=args.output,
+        rac_path=rac_path,
+        mode=args.mode,
+        extra_context_paths=[Path(path) for path in args.allow_context],
+        policyengine_rac_var_hint=args.policyengine_rac_var_hint,
+    )
+
+    if args.json:
+        print(json.dumps([result.to_dict() for result in results], indent=2))
+        return
+
+    print(f"Output root: {args.output}")
+    print(f"rac: {rac_path}")
+    print(f"Source: {args.source_file}")
+    if args.policyengine_rac_var_hint:
+        print(f"PolicyEngine RAC var hint: {args.policyengine_rac_var_hint}")
+    print(f"Mode: {args.mode}")
+    print()
+
+    for result in results:
+        print(f"{result.citation} [{result.runner}]")
+        print(
+            f"  success={result.success} duration_ms={result.duration_ms} cost_est=${result.estimated_cost_usd or 0:.4f}"
+        )
+        print(
+            f"  tokens in={result.input_tokens} out={result.output_tokens} cache_read={result.cache_read_tokens} reasoning_out={result.reasoning_output_tokens}"
+        )
+        print(f"  retrieved_files={len(result.retrieved_files)}")
+        if result.unexpected_accesses:
+            print(f"  unexpected_accesses={len(result.unexpected_accesses)}")
+        _print_eval_metrics(result)
+        if result.error:
+            print(f"  error={result.error}")
+        print(f"  file={result.output_file}")
+        print(f"  trace={result.trace_file}")
+        print(f"  manifest={result.context_manifest_file}")
+        print()
+
+
+def cmd_eval_akn_section(args):
+    """Run deterministic model comparisons on one AKN section."""
+    runners = _effective_runner_specs(
+        args.runner or ["claude:opus", "codex:gpt-5.4"], args
+    )
+    rac_path = args.rac_path or _default_repo_checkout("rac")
+
+    if not rac_path.exists():
+        print(f"rac repo not found: {rac_path}")
+        sys.exit(1)
+    if not args.akn_file.exists():
+        print(f"AKN file not found: {args.akn_file}")
+        sys.exit(1)
+
+    results = run_akn_section_eval(
+        source_id=args.source_id,
+        akn_file=args.akn_file,
+        section_eid=args.section_eid,
+        runner_specs=runners,
+        output_root=args.output,
+        rac_path=rac_path,
+        mode=args.mode,
+        extra_context_paths=[Path(path) for path in args.allow_context],
+        allow_parent=args.allow_parent,
+        table_row_query=args.table_row_query,
+        policyengine_rac_var_hint=args.policyengine_rac_var_hint,
+    )
+
+    if args.json:
+        print(json.dumps([result.to_dict() for result in results], indent=2))
+        return
+
+    print(f"Output root: {args.output}")
+    print(f"rac: {rac_path}")
+    print(f"AKN file: {args.akn_file}")
+    print(f"Section: {args.section_eid}")
+    if args.table_row_query:
+        print(f"Table row query: {args.table_row_query}")
+    if args.policyengine_rac_var_hint:
+        print(f"PolicyEngine RAC var hint: {args.policyengine_rac_var_hint}")
+    print(f"Mode: {args.mode}")
+    print()
+
+    for result in results:
+        print(f"{result.citation} [{result.runner}]")
+        print(
+            f"  success={result.success} duration_ms={result.duration_ms} cost_est=${result.estimated_cost_usd or 0:.4f}"
+        )
+        print(
+            f"  tokens in={result.input_tokens} out={result.output_tokens} cache_read={result.cache_read_tokens} reasoning_out={result.reasoning_output_tokens}"
+        )
+        print(f"  retrieved_files={len(result.retrieved_files)}")
+        if result.unexpected_accesses:
+            print(f"  unexpected_accesses={len(result.unexpected_accesses)}")
+        _print_eval_metrics(result)
+        if result.error:
+            print(f"  error={result.error}")
+        print(f"  file={result.output_file}")
+        print(f"  trace={result.trace_file}")
+        print(f"  manifest={result.context_manifest_file}")
+        print()
+
+
+def cmd_eval_uk_legislation_section(args):
+    """Run deterministic model comparisons on official UK legislation XML."""
+    runners = _effective_runner_specs(
+        args.runner or ["claude:opus", "codex:gpt-5.4"], args
+    )
+    rac_path = args.rac_path or _default_repo_checkout("rac")
+
+    if not rac_path.exists():
+        print(f"rac repo not found: {rac_path}")
+        sys.exit(1)
+
+    results = run_legislation_gov_uk_section_eval(
+        source_ref=args.source_ref,
+        section_eid=args.section_eid,
+        runner_specs=runners,
+        output_root=args.output,
+        rac_path=rac_path,
+        mode=args.mode,
+        extra_context_paths=[Path(path) for path in args.allow_context],
+        allow_parent=args.allow_parent,
+        table_row_query=args.table_row_query,
+        policyengine_rac_var_hint=args.policyengine_rac_var_hint,
+    )
+
+    if args.json:
+        print(json.dumps([result.to_dict() for result in results], indent=2))
+        return
+
+    print(f"Output root: {args.output}")
+    print(f"rac: {rac_path}")
+    print(f"Source: {args.source_ref}")
+    if args.section_eid:
+        print(f"Section: {args.section_eid}")
+    if args.table_row_query:
+        print(f"Table row query: {args.table_row_query}")
+    if args.policyengine_rac_var_hint:
+        print(f"PolicyEngine RAC var hint: {args.policyengine_rac_var_hint}")
+    print(f"Mode: {args.mode}")
+    print()
+
+    for result in results:
+        print(f"{result.citation} [{result.runner}]")
+        print(
+            f"  success={result.success} duration_ms={result.duration_ms} cost_est=${result.estimated_cost_usd or 0:.4f}"
+        )
+        print(
+            f"  tokens in={result.input_tokens} out={result.output_tokens} cache_read={result.cache_read_tokens} reasoning_out={result.reasoning_output_tokens}"
+        )
+        print(f"  retrieved_files={len(result.retrieved_files)}")
+        if result.unexpected_accesses:
+            print(f"  unexpected_accesses={len(result.unexpected_accesses)}")
+        _print_eval_metrics(result)
+        if result.error:
+            print(f"  error={result.error}")
+        print(f"  file={result.output_file}")
+        print(f"  trace={result.trace_file}")
+        print(f"  manifest={result.context_manifest_file}")
+        print()
+
+
+def _format_gate_result(gate) -> str:
+    """Format one readiness gate for human-readable output."""
+    relation = ">=" if gate.comparator == "min" else "<="
+    actual = "n/a" if gate.actual is None else f"{gate.actual}"
+    return (
+        f"  [{'PASS' if gate.passed else 'FAIL'}] {gate.name}: "
+        f"{actual} {relation} {gate.threshold}"
+    )
+
+
+def _serialize_eval_result(result) -> dict:
+    """Return a JSON-serializable eval result payload."""
+    if hasattr(result, "to_dict"):
+        return result.to_dict()
+    if isinstance(result, dict):
+        return result
+    return {
+        "citation": getattr(result, "citation", None),
+        "runner": getattr(result, "runner", None),
+        "backend": getattr(result, "backend", None),
+        "model": getattr(result, "model", None),
+        "mode": getattr(result, "mode", None),
+        "output_file": getattr(result, "output_file", None),
+        "trace_file": getattr(result, "trace_file", None),
+        "context_manifest_file": getattr(result, "context_manifest_file", None),
+        "duration_ms": getattr(result, "duration_ms", None),
+        "success": getattr(result, "success", None),
+        "error": getattr(result, "error", None),
+        "metrics": getattr(result, "metrics", None),
+    }
+
+
+def _serialize_gate_result(gate) -> dict:
+    """Return a JSON-serializable readiness gate payload."""
+    if is_dataclass(gate):
+        return asdict(gate)
+    if isinstance(gate, dict):
+        return gate
+    return {
+        "name": getattr(gate, "name", None),
+        "comparator": getattr(gate, "comparator", None),
+        "threshold": getattr(gate, "threshold", None),
+        "actual": getattr(gate, "actual", None),
+        "passed": getattr(gate, "passed", None),
+    }
+
+
+def _serialize_readiness_summary(summary) -> dict:
+    """Return a JSON-serializable readiness summary payload."""
+    if is_dataclass(summary):
+        return asdict(summary)
+    if isinstance(summary, dict):
+        return summary
+    return {
+        "total_cases": getattr(summary, "total_cases", None),
+        "success_rate": getattr(summary, "success_rate", None),
+        "compile_pass_rate": getattr(summary, "compile_pass_rate", None),
+        "ci_pass_rate": getattr(summary, "ci_pass_rate", None),
+        "zero_ungrounded_rate": getattr(summary, "zero_ungrounded_rate", None),
+        "generalist_review_pass_rate": getattr(
+            summary, "generalist_review_pass_rate", None
+        ),
+        "mean_generalist_review_score": getattr(
+            summary, "mean_generalist_review_score", None
+        ),
+        "policyengine_case_count": getattr(summary, "policyengine_case_count", None),
+        "policyengine_pass_rate": getattr(summary, "policyengine_pass_rate", None),
+        "mean_policyengine_score": getattr(summary, "mean_policyengine_score", None),
+        "mean_estimated_cost_usd": getattr(summary, "mean_estimated_cost_usd", None),
+        "gate_results": [
+            _serialize_gate_result(gate)
+            for gate in getattr(summary, "gate_results", []) or []
+        ],
+        "ready": getattr(summary, "ready", None),
+    }
+
+
+def _build_eval_suite_payload(manifest, effective_runners, results, readiness, all_ready):
+    """Build the persisted eval-suite payload shared by text and JSON output."""
+    return {
+        "manifest": {
+            "name": manifest.name,
+            "path": str(manifest.path),
+            "runners": manifest.runners,
+            "effective_runners": effective_runners,
+        },
+        "results": [_serialize_eval_result(result) for result in results],
+        "readiness": {
+            runner: _serialize_readiness_summary(summary)
+            for runner, summary in readiness.items()
+        },
+        "all_ready": all_ready,
+    }
+
+
+def cmd_eval_suite(args):
+    """Run a manifest-driven benchmark suite and evaluate readiness gates."""
+    manifest = load_eval_suite_manifest(args.manifest)
+    effective_runners = _effective_runner_specs(args.runner or manifest.runners, args)
+    rac_path = args.rac_path or _default_repo_checkout("rac")
+    atlas_path = args.atlas_path or _default_repo_checkout("atlas")
+
+    if not rac_path.exists():
+        print(f"rac repo not found: {rac_path}")
+        sys.exit(1)
+
+    has_citation_case = any(case.kind == "citation" for case in manifest.cases)
+    if has_citation_case and not atlas_path.exists():
+        print(f"Atlas repo not found: {atlas_path}")
+        sys.exit(1)
+
+    results = run_eval_suite(
+        manifest=manifest,
+        output_root=args.output,
+        rac_path=rac_path,
+        atlas_path=atlas_path if has_citation_case else None,
+        runner_specs=effective_runners,
+    )
+
+    grouped: dict[str, list] = {}
+    for result in results:
+        grouped.setdefault(result.runner, []).append(result)
+
+    readiness = {
+        runner: summarize_readiness(runner_results, manifest.gates)
+        for runner, runner_results in grouped.items()
+    }
+    all_ready = all(summary.ready for summary in readiness.values())
+    payload = _build_eval_suite_payload(
+        manifest=manifest,
+        effective_runners=effective_runners,
+        results=results,
+        readiness=readiness,
+        all_ready=all_ready,
+    )
+    args.output.mkdir(parents=True, exist_ok=True)
+    (args.output / "results.json").write_text(json.dumps(payload, indent=2) + "\n")
+    (args.output / "summary.json").write_text(
+        json.dumps(
+            {
+                "manifest": payload["manifest"],
+                "readiness": payload["readiness"],
+                "all_ready": all_ready,
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+
+    if args.json:
+        print(json.dumps(payload, indent=2))
+        sys.exit(0 if all_ready else 1)
+
+    print(f"Manifest: {manifest.path}")
+    print(f"Suite: {manifest.name}")
+    print(f"Output root: {args.output}")
+    print(f"Runners: {', '.join(effective_runners)}")
+    print(f"rac: {rac_path}")
+    if has_citation_case:
+        print(f"Atlas: {atlas_path}")
+    print()
+
+    for runner, summary in readiness.items():
+        print(f"{runner}: {'READY' if summary.ready else 'NOT READY'}")
+        print(
+            f"  cases={summary.total_cases} success={summary.success_rate:.1%} "
+            f"compile={summary.compile_pass_rate:.1%} ci={summary.ci_pass_rate:.1%} "
+            f"zero_ungrounded={summary.zero_ungrounded_rate:.1%} "
+            f"generalist_review={summary.generalist_review_pass_rate:.1%}"
+        )
+        if summary.mean_generalist_review_score is not None:
+            print(
+                f"  mean_generalist_review_score={summary.mean_generalist_review_score:.2f}/10"
+            )
+        if summary.policyengine_case_count:
+            print(
+                f"  policyengine_cases={summary.policyengine_case_count} "
+                f"pass_rate={(summary.policyengine_pass_rate or 0):.1%} "
+                f"mean_score={(summary.mean_policyengine_score or 0):.1%}"
+            )
+        if summary.mean_estimated_cost_usd is not None:
+            print(f"  mean_estimated_cost=${summary.mean_estimated_cost_usd:.4f}")
+        for gate in summary.gate_results:
+            print(_format_gate_result(gate))
+
+        notable_failures = [
+            result
+            for result in grouped[runner]
+            if (
+                not result.success
+                or result.error
+                or result.metrics is None
+                or not result.metrics.compile_pass
+                or not result.metrics.ci_pass
+                or result.metrics.ungrounded_numeric_count > 0
+                or result.metrics.generalist_review_pass is False
+            )
+        ]
+        if notable_failures:
+            print("  notable_failures:")
+            for result in notable_failures[:5]:
+                print(
+                    f"    - {result.citation}: success={result.success} "
+                    f"compile={getattr(result.metrics, 'compile_pass', None)} "
+                    f"ci={getattr(result.metrics, 'ci_pass', None)} "
+                    f"ungrounded={getattr(result.metrics, 'ungrounded_numeric_count', None)} "
+                    f"generalist={getattr(result.metrics, 'generalist_review_pass', None)}"
+                )
+        print()
+
+    sys.exit(0 if all_ready else 1)
+
+
+def _ordered_runner_names(payload: dict) -> list[str]:
+    """Preserve runner order from results/readiness payloads."""
+    ordered: list[str] = []
+    for result in payload.get("results", []) or []:
+        runner = result.get("runner")
+        if runner and runner not in ordered:
+            ordered.append(runner)
+    for runner in (payload.get("readiness") or {}).keys():
+        if runner not in ordered:
+            ordered.append(runner)
+    return ordered
+
+
+def _mean_numeric(values: list[float | int | None]) -> float | None:
+    """Return the arithmetic mean for present numeric values."""
+    filtered = [float(value) for value in values if value is not None]
+    if not filtered:
+        return None
+    return round(sum(filtered) / len(filtered), 6)
+
+
+def _format_percent(value: float | None) -> str:
+    """Format optional fractions as percentages."""
+    if value is None:
+        return "n/a"
+    return f"{value:.1%}"
+
+
+def _format_money(value: float | None) -> str:
+    """Format optional dollar values for reports."""
+    if value is None:
+        return "n/a"
+    return f"${value:.4f}"
+
+
+def _format_duration_seconds(value_ms: float | None) -> str:
+    """Format optional millisecond durations as seconds."""
+    if value_ms is None:
+        return "n/a"
+    return f"{(value_ms / 1000):.1f}"
+
+
+def _format_generalist_score(value: float | None) -> str:
+    """Format optional 0-10 reviewer scores."""
+    if value is None:
+        return "n/a"
+    return f"{value:.2f}/10"
+
+
+def _build_eval_suite_report(payload: dict, left_runner: str, right_runner: str) -> dict:
+    """Build a structured pairwise report from eval-suite JSON output."""
+    results = payload.get("results", []) or []
+    readiness = payload.get("readiness", {}) or {}
+
+    by_case: dict[str, dict[str, dict]] = {}
+    for result in results:
+        citation = result.get("citation")
+        runner = result.get("runner")
+        if not citation or not runner:
+            continue
+        by_case.setdefault(str(citation), {})[str(runner)] = result
+
+    case_rows: list[dict] = []
+    both_present = 0
+    left_success_only = 0
+    right_success_only = 0
+    left_compile_only = 0
+    right_compile_only = 0
+    left_ci_only = 0
+    right_ci_only = 0
+    left_zero_ungrounded_only = 0
+    right_zero_ungrounded_only = 0
+    left_lower_cost = 0
+    right_lower_cost = 0
+    tied_cost = 0
+    left_higher_pe = 0
+    right_higher_pe = 0
+    tied_pe = 0
+
+    for citation in sorted(by_case):
+        left = by_case[citation].get(left_runner)
+        right = by_case[citation].get(right_runner)
+        left_metrics = (left or {}).get("metrics") or {}
+        right_metrics = (right or {}).get("metrics") or {}
+
+        row = {
+            "case": citation,
+            "left_runner": left_runner,
+            "right_runner": right_runner,
+            "left_success": left.get("success") if left else None,
+            "right_success": right.get("success") if right else None,
+            "left_compile_pass": left_metrics.get("compile_pass"),
+            "right_compile_pass": right_metrics.get("compile_pass"),
+            "left_ci_pass": left_metrics.get("ci_pass"),
+            "right_ci_pass": right_metrics.get("ci_pass"),
+            "left_zero_ungrounded": (
+                left_metrics.get("ungrounded_numeric_count") == 0
+                if left is not None and left_metrics
+                else None
+            ),
+            "right_zero_ungrounded": (
+                right_metrics.get("ungrounded_numeric_count") == 0
+                if right is not None and right_metrics
+                else None
+            ),
+            "left_policyengine_score": left_metrics.get("policyengine_score"),
+            "right_policyengine_score": right_metrics.get("policyengine_score"),
+            "left_estimated_cost_usd": left.get("estimated_cost_usd") if left else None,
+            "right_estimated_cost_usd": right.get("estimated_cost_usd") if right else None,
+            "left_duration_ms": left.get("duration_ms") if left else None,
+            "right_duration_ms": right.get("duration_ms") if right else None,
+            "left_output_file": left.get("output_file") if left else None,
+            "right_output_file": right.get("output_file") if right else None,
+        }
+        case_rows.append(row)
+
+        if left is not None and right is not None:
+            both_present += 1
+            if row["left_success"] and not row["right_success"]:
+                left_success_only += 1
+            elif row["right_success"] and not row["left_success"]:
+                right_success_only += 1
+
+            if row["left_compile_pass"] and not row["right_compile_pass"]:
+                left_compile_only += 1
+            elif row["right_compile_pass"] and not row["left_compile_pass"]:
+                right_compile_only += 1
+
+            if row["left_ci_pass"] and not row["right_ci_pass"]:
+                left_ci_only += 1
+            elif row["right_ci_pass"] and not row["left_ci_pass"]:
+                right_ci_only += 1
+
+            if row["left_zero_ungrounded"] and not row["right_zero_ungrounded"]:
+                left_zero_ungrounded_only += 1
+            elif row["right_zero_ungrounded"] and not row["left_zero_ungrounded"]:
+                right_zero_ungrounded_only += 1
+
+            left_cost = row["left_estimated_cost_usd"]
+            right_cost = row["right_estimated_cost_usd"]
+            if left_cost is not None and right_cost is not None:
+                if left_cost < right_cost:
+                    left_lower_cost += 1
+                elif right_cost < left_cost:
+                    right_lower_cost += 1
+                else:
+                    tied_cost += 1
+
+            left_pe = row["left_policyengine_score"]
+            right_pe = row["right_policyengine_score"]
+            if left_pe is not None and right_pe is not None:
+                if left_pe > right_pe:
+                    left_higher_pe += 1
+                elif right_pe > left_pe:
+                    right_higher_pe += 1
+                else:
+                    tied_pe += 1
+
+    runner_summaries: dict[str, dict] = {}
+    for runner in [left_runner, right_runner]:
+        runner_results = [result for result in results if result.get("runner") == runner]
+        summary = dict(readiness.get(runner) or {})
+        summary["mean_duration_ms"] = _mean_numeric(
+            [result.get("duration_ms") for result in runner_results]
+        )
+        summary["case_count"] = len(runner_results)
+        runner_summaries[runner] = summary
+
+    return {
+        "manifest": payload.get("manifest") or {},
+        "left_runner": left_runner,
+        "right_runner": right_runner,
+        "runner_summaries": runner_summaries,
+        "pairwise": {
+            "paired_case_count": both_present,
+            "left_success_only_count": left_success_only,
+            "right_success_only_count": right_success_only,
+            "left_compile_only_count": left_compile_only,
+            "right_compile_only_count": right_compile_only,
+            "left_ci_only_count": left_ci_only,
+            "right_ci_only_count": right_ci_only,
+            "left_zero_ungrounded_only_count": left_zero_ungrounded_only,
+            "right_zero_ungrounded_only_count": right_zero_ungrounded_only,
+            "left_lower_cost_count": left_lower_cost,
+            "right_lower_cost_count": right_lower_cost,
+            "tied_cost_count": tied_cost,
+            "left_higher_policyengine_score_count": left_higher_pe,
+            "right_higher_policyengine_score_count": right_higher_pe,
+            "tied_policyengine_score_count": tied_pe,
+        },
+        "case_rows": case_rows,
+    }
+
+
+def _render_eval_suite_report_markdown(report: dict) -> str:
+    """Render a human-readable pairwise report suitable for a paper appendix."""
+    manifest = report.get("manifest") or {}
+    left_runner = report["left_runner"]
+    right_runner = report["right_runner"]
+    left_summary = report["runner_summaries"].get(left_runner) or {}
+    right_summary = report["runner_summaries"].get(right_runner) or {}
+    pairwise = report.get("pairwise") or {}
+    case_rows = report.get("case_rows") or []
+
+    lines = [
+        f"# {manifest.get('name', 'Eval suite')} model comparison",
+        "",
+        f"- Manifest: `{manifest.get('path', 'n/a')}`",
+        f"- Left runner: `{left_runner}`",
+        f"- Right runner: `{right_runner}`",
+        "",
+        "| Metric | "
+        + left_runner
+        + " | "
+        + right_runner
+        + " |",
+        "| --- | ---: | ---: |",
+        f"| Cases | {left_summary.get('total_cases', left_summary.get('case_count', 'n/a'))} | {right_summary.get('total_cases', right_summary.get('case_count', 'n/a'))} |",
+        f"| Success rate | {_format_percent(left_summary.get('success_rate'))} | {_format_percent(right_summary.get('success_rate'))} |",
+        f"| Compile pass rate | {_format_percent(left_summary.get('compile_pass_rate'))} | {_format_percent(right_summary.get('compile_pass_rate'))} |",
+        f"| CI pass rate | {_format_percent(left_summary.get('ci_pass_rate'))} | {_format_percent(right_summary.get('ci_pass_rate'))} |",
+        f"| Zero-ungrounded rate | {_format_percent(left_summary.get('zero_ungrounded_rate'))} | {_format_percent(right_summary.get('zero_ungrounded_rate'))} |",
+        f"| Generalist review pass rate | {_format_percent(left_summary.get('generalist_review_pass_rate'))} | {_format_percent(right_summary.get('generalist_review_pass_rate'))} |",
+        f"| Mean generalist review score | {_format_generalist_score(left_summary.get('mean_generalist_review_score'))} | {_format_generalist_score(right_summary.get('mean_generalist_review_score'))} |",
+        f"| PolicyEngine pass rate | {_format_percent(left_summary.get('policyengine_pass_rate'))} | {_format_percent(right_summary.get('policyengine_pass_rate'))} |",
+        f"| Mean PolicyEngine score | {_format_percent(left_summary.get('mean_policyengine_score'))} | {_format_percent(right_summary.get('mean_policyengine_score'))} |",
+        f"| Mean estimated cost | {_format_money(left_summary.get('mean_estimated_cost_usd'))} | {_format_money(right_summary.get('mean_estimated_cost_usd'))} |",
+        f"| Mean duration (s) | {_format_duration_seconds(left_summary.get('mean_duration_ms'))} | {_format_duration_seconds(right_summary.get('mean_duration_ms'))} |",
+        "",
+        "## Pairwise counts",
+        "",
+        "| Outcome | Count |",
+        "| --- | ---: |",
+        f"| Paired cases | {pairwise.get('paired_case_count', 0)} |",
+        f"| {left_runner} success-only advantages | {pairwise.get('left_success_only_count', 0)} |",
+        f"| {right_runner} success-only advantages | {pairwise.get('right_success_only_count', 0)} |",
+        f"| {left_runner} compile-only advantages | {pairwise.get('left_compile_only_count', 0)} |",
+        f"| {right_runner} compile-only advantages | {pairwise.get('right_compile_only_count', 0)} |",
+        f"| {left_runner} CI-only advantages | {pairwise.get('left_ci_only_count', 0)} |",
+        f"| {right_runner} CI-only advantages | {pairwise.get('right_ci_only_count', 0)} |",
+        f"| {left_runner} lower-cost cases | {pairwise.get('left_lower_cost_count', 0)} |",
+        f"| {right_runner} lower-cost cases | {pairwise.get('right_lower_cost_count', 0)} |",
+        f"| Tied-cost cases | {pairwise.get('tied_cost_count', 0)} |",
+        f"| {left_runner} higher-PE-score cases | {pairwise.get('left_higher_policyengine_score_count', 0)} |",
+        f"| {right_runner} higher-PE-score cases | {pairwise.get('right_higher_policyengine_score_count', 0)} |",
+        f"| Tied-PE-score cases | {pairwise.get('tied_policyengine_score_count', 0)} |",
+        "",
+        "## Case-level appendix",
+        "",
+        "| Case | "
+        + left_runner
+        + " compile | "
+        + right_runner
+        + " compile | "
+        + left_runner
+        + " PE | "
+        + right_runner
+        + " PE | "
+        + left_runner
+        + " cost | "
+        + right_runner
+        + " cost |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+
+    for row in case_rows:
+        left_pe = row["left_policyengine_score"]
+        right_pe = row["right_policyengine_score"]
+        lines.append(
+            "| "
+            + row["case"]
+            + " | "
+            + ("pass" if row["left_compile_pass"] else "fail" if row["left_compile_pass"] is not None else "n/a")
+            + " | "
+            + ("pass" if row["right_compile_pass"] else "fail" if row["right_compile_pass"] is not None else "n/a")
+            + " | "
+            + (_format_percent(left_pe) if left_pe is not None else "n/a")
+            + " | "
+            + (_format_percent(right_pe) if right_pe is not None else "n/a")
+            + " | "
+            + _format_money(row["left_estimated_cost_usd"])
+            + " | "
+            + _format_money(row["right_estimated_cost_usd"])
+            + " |"
+        )
+
+    return "\n".join(lines) + "\n"
+
+
+def cmd_eval_suite_report(args):
+    """Render a pairwise comparison report from eval-suite JSON output."""
+    payload = json.loads(args.result_json.read_text())
+    available_runners = _ordered_runner_names(payload)
+    if not available_runners:
+        print(f"No runner results found in {args.result_json}")
+        sys.exit(1)
+
+    left_runner = args.left_runner or (available_runners[0] if available_runners else None)
+    right_runner = args.right_runner or (
+        available_runners[1] if len(available_runners) > 1 else None
+    )
+    if not left_runner or not right_runner:
+        print(
+            "Need two runners to compare. Pass --left-runner and --right-runner or provide a two-runner suite JSON."
+        )
+        sys.exit(1)
+    if left_runner not in available_runners or right_runner not in available_runners:
+        print(
+            f"Requested runners must exist in the suite JSON. Available: {', '.join(available_runners)}"
+        )
+        sys.exit(1)
+
+    report = _build_eval_suite_report(payload, left_runner, right_runner)
+
+    if args.csv_out:
+        args.csv_out.parent.mkdir(parents=True, exist_ok=True)
+        with args.csv_out.open("w", newline="") as fh:
+            fieldnames = list(report["case_rows"][0].keys()) if report["case_rows"] else []
+            writer = csv.DictWriter(fh, fieldnames=fieldnames)
+            if fieldnames:
+                writer.writeheader()
+                writer.writerows(report["case_rows"])
+
+    if args.json:
+        rendered = json.dumps(report, indent=2)
+    else:
+        rendered = _render_eval_suite_report_markdown(report)
+
+    if args.markdown_out and not args.json:
+        args.markdown_out.parent.mkdir(parents=True, exist_ok=True)
+        args.markdown_out.write_text(rendered)
+
+    print(rendered)
+
+
 # =========================================================================
 # Session Commands
 # =========================================================================
@@ -1435,7 +2693,13 @@ def cmd_encode(args):
 def cmd_session_start(args):
     """Start a new session."""
     db = EncodingDB(args.db)
-    session = db.start_session(model=args.model, cwd=args.cwd or str(Path.cwd()))
+    from . import __version__
+
+    session = db.start_session(
+        model=args.model,
+        cwd=args.cwd or str(Path.cwd()),
+        autorac_version=__version__,
+    )
 
     # Output just the session ID for hooks to capture
     print(session.id)
@@ -1479,14 +2743,19 @@ def cmd_sessions(args):
         print("No sessions found.")
         return
 
-    print(f"{'ID':<10} {'Started':<20} {'Events':<8} {'Model':<15} {'Status'}")
-    print("-" * 70)
+    print(
+        f"{'ID':<10} {'Started':<20} {'Events':<8} {'Model':<15} {'Version':<10} {'Status'}"
+    )
+    print("-" * 82)
 
     for s in sessions:
         started = s.started_at.strftime("%Y-%m-%d %H:%M") if s.started_at else "?"
         status = "ended" if s.ended_at else "active"
         model = s.model[:15] if s.model else "-"
-        print(f"{s.id:<10} {started:<20} {s.event_count:<8} {model:<15} {status}")
+        version = s.autorac_version[:10] if s.autorac_version else "-"
+        print(
+            f"{s.id:<10} {started:<20} {s.event_count:<8} {model:<15} {version:<10} {status}"
+        )
 
 
 def cmd_session_show(args):
@@ -1510,6 +2779,7 @@ def cmd_session_show(args):
                 "ended_at": session.ended_at.isoformat() if session.ended_at else None,
                 "model": session.model,
                 "cwd": session.cwd,
+                "autorac_version": session.autorac_version,
                 "event_count": session.event_count,
             },
             "events": [
@@ -1530,6 +2800,7 @@ def cmd_session_show(args):
     else:
         print(f"Session: {session.id}")
         print(f"Model: {session.model}")
+        print(f"AutoRAC: {session.autorac_version or '-'}")
         print(f"Started: {session.started_at}")
         print(f"Ended: {session.ended_at or 'active'}")
         print(f"Events: {session.event_count}")

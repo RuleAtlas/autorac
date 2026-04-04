@@ -1,0 +1,47 @@
+name: UK pension credit wave 6
+runners:
+  - openai:gpt-5.4
+mode: cold
+gates:
+  min_cases: 5
+  min_success_rate: 0.9
+  min_compile_pass_rate: 0.9
+  min_ci_pass_rate: 0.9
+  min_zero_ungrounded_rate: 1.0
+  max_mean_estimated_cost_usd: 0.5
+cases:
+  - kind: source
+    name: pension-credit-savings-credit-maximum-rate
+    source_id: uksi-2002-1792-regulation-7-1-a
+    source_file: ./sources/uk/pc_savings_credit_maximum_rate_2025.txt
+    oracle: none
+    policyengine_rac_var_hint: pc_savings_credit_maximum_rate
+
+  - kind: source
+    name: pension-credit-savings-credit-amount-a-rate
+    source_id: uksi-2002-1792-regulation-7-1-b
+    source_file: ./sources/uk/pc_savings_credit_amount_a_rate_2025.txt
+    oracle: none
+    policyengine_rac_var_hint: pc_savings_credit_amount_a_rate
+
+  - kind: source
+    name: pension-credit-savings-credit-amount-b-rate
+    source_id: uksi-2002-1792-regulation-7-1-c
+    source_file: ./sources/uk/pc_savings_credit_amount_b_rate_2025.txt
+    oracle: none
+    policyengine_rac_var_hint: pc_savings_credit_amount_b_rate
+
+  - kind: source
+    name: pension-credit-savings-credit-threshold-single
+    source_id: uksi-2002-1792-regulation-7-2-single
+    source_file: ./sources/uk/pc_savings_credit_threshold_single_2025.txt
+    oracle: none
+    policyengine_rac_var_hint: pc_savings_credit_threshold_single_weekly_amount
+
+  - kind: source
+    name: pension-credit-savings-credit-threshold-couple
+    source_id: uksi-2002-1792-regulation-7-2-couple
+    source_file: ./sources/uk/pc_savings_credit_threshold_couple_2025.txt
+    oracle: none
+    policyengine_rac_var_hint: pc_savings_credit_threshold_couple_weekly_amount
+

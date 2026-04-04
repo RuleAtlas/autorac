@@ -8,17 +8,22 @@ All external dependencies are mocked.
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from autorac.cli import (
+    _effective_runner_specs,
     _extract_subsections_from_xml,
+    _rewrite_gpt_runner_backend,
     cmd_benchmark,
     cmd_calibration,
     cmd_compile,
     cmd_coverage,
     cmd_encode,
+    cmd_eval_suite,
+    cmd_eval_suite_report,
     cmd_init,
     cmd_log,
     cmd_log_event,
@@ -48,6 +53,28 @@ from autorac.harness.encoding_db import (
 # =========================================================================
 # Test main() dispatch
 # =========================================================================
+
+
+class TestRunnerOverrides:
+    def test_rewrites_openai_gpt_runner_to_codex(self):
+        assert (
+            _rewrite_gpt_runner_backend("openai:gpt-5.4", "codex")
+            == "codex:gpt-5.4"
+        )
+
+    def test_preserves_alias_when_rewriting_gpt_runner_backend(self):
+        assert (
+            _rewrite_gpt_runner_backend("gpt=openai:gpt-5.4", "codex")
+            == "gpt=codex:gpt-5.4"
+        )
+
+    def test_effective_runner_specs_uses_env_override(self, monkeypatch):
+        monkeypatch.setenv("AUTORAC_GPT_BACKEND", "codex")
+        args = SimpleNamespace(gpt_backend=None)
+
+        assert _effective_runner_specs(
+            ["openai:gpt-5.4", "claude:opus"], args
+        ) == ["codex:gpt-5.4", "claude:opus"]
 
 
 class TestMain:
@@ -125,6 +152,99 @@ class TestMain:
                 main()
                 mock_cmd.assert_called_once()
 
+    def test_eval_command_dispatches(self):
+        with patch("sys.argv", ["autorac", "eval", "26 USC 24(a)"]):
+            with patch("autorac.cli.cmd_eval") as mock_cmd:
+                main()
+                mock_cmd.assert_called_once()
+
+    def test_eval_source_command_dispatches(self):
+        with tempfile.NamedTemporaryFile() as f:
+            with patch(
+                "sys.argv",
+                ["autorac", "eval-source", "CO TANF 3.606.1(F)", f.name],
+            ):
+                with patch("autorac.cli.cmd_eval_source") as mock_cmd:
+                    main()
+                    mock_cmd.assert_called_once()
+
+    def test_eval_akn_section_command_dispatches(self):
+        with tempfile.NamedTemporaryFile(suffix=".xml") as f:
+            with patch(
+                "sys.argv",
+                [
+                    "autorac",
+                    "eval-akn-section",
+                    "CO TANF 3.606.1",
+                    f.name,
+                    "sec_3_606_1",
+                ],
+            ):
+                with patch("autorac.cli.cmd_eval_akn_section") as mock_cmd:
+                    main()
+                    mock_cmd.assert_called_once()
+
+    def test_eval_uk_legislation_section_command_dispatches(self):
+        with patch(
+            "sys.argv",
+            [
+                "autorac",
+                "eval-uk-legislation-section",
+                "https://www.legislation.gov.uk/ukpga/2010/1/section/1",
+            ],
+        ):
+            with patch("autorac.cli.cmd_eval_uk_legislation_section") as mock_cmd:
+                main()
+                mock_cmd.assert_called_once()
+
+    def test_eval_uk_legislation_section_accepts_table_row_query(self):
+        with patch(
+            "sys.argv",
+            [
+                "autorac",
+                "eval-uk-legislation-section",
+                "/uksi/2013/376/regulation/36/2025-04-01",
+                "--section-eid",
+                "regulation-36-3",
+                "--table-row-query",
+                "single claimant aged under 25",
+            ],
+        ):
+            with patch("autorac.cli.cmd_eval_uk_legislation_section") as mock_cmd:
+                main()
+                mock_cmd.assert_called_once()
+
+    def test_eval_source_accepts_policyengine_rac_var_hint(self):
+        with tempfile.NamedTemporaryFile() as f:
+            with patch(
+                "sys.argv",
+                [
+                    "autorac",
+                    "eval-source",
+                    "UC row",
+                    f.name,
+                    "--policyengine-rac-var-hint",
+                    "uc_standard_allowance_single_claimant_aged_under_25",
+                ],
+            ):
+                with patch("autorac.cli.cmd_eval_source") as mock_cmd:
+                    main()
+                    mock_cmd.assert_called_once()
+
+    def test_eval_suite_command_dispatches(self):
+        with tempfile.NamedTemporaryFile(suffix=".yaml") as f:
+            with patch("sys.argv", ["autorac", "eval-suite", f.name]):
+                with patch("autorac.cli.cmd_eval_suite") as mock_cmd:
+                    main()
+                    mock_cmd.assert_called_once()
+
+    def test_eval_suite_report_command_dispatches(self):
+        with tempfile.NamedTemporaryFile(suffix=".json") as f:
+            with patch("sys.argv", ["autorac", "eval-suite-report", f.name]):
+                with patch("autorac.cli.cmd_eval_suite_report") as mock_cmd:
+                    main()
+                    mock_cmd.assert_called_once()
+
     def test_compile_command_dispatches(self):
         with tempfile.NamedTemporaryFile(suffix=".rac") as f:
             with patch("sys.argv", ["autorac", "compile", f.name]):
@@ -189,6 +309,164 @@ class TestMain:
             with patch("autorac.cli.cmd_transcript_stats") as mock_cmd:
                 main()
                 mock_cmd.assert_called_once()
+
+
+class TestCmdEvalSuite:
+    def test_exits_nonzero_when_runner_is_not_ready(self, tmp_path, capsys):
+        manifest_file = tmp_path / "suite.yaml"
+        manifest_file.write_text("name: readiness\ncases:\n  - kind: source\n    source_id: x\n    source_file: ./source.txt\n")
+        (tmp_path / "source.txt").write_text("authoritative text")
+        args = SimpleNamespace(
+            manifest=manifest_file,
+            runner=None,
+            output=tmp_path / "out",
+            atlas_path=tmp_path / "atlas",
+            rac_path=tmp_path / "rac",
+            json=False,
+            gpt_backend="codex",
+        )
+        args.rac_path.mkdir()
+
+        fake_result = MagicMock()
+        fake_result.runner = "codex-gpt-5.4"
+        fake_result.success = True
+        fake_result.error = None
+        fake_result.metrics = MagicMock(
+            compile_pass=True,
+            ci_pass=True,
+            ungrounded_numeric_count=0,
+        )
+        fake_result.to_dict.return_value = {
+            "citation": "case-a",
+            "runner": "codex-gpt-5.4",
+            "success": True,
+            "error": None,
+            "metrics": {
+                "compile_pass": True,
+                "ci_pass": True,
+                "ungrounded_numeric_count": 0,
+            },
+        }
+
+        fake_summary = MagicMock(
+            ready=False,
+            total_cases=1,
+            success_rate=1.0,
+            compile_pass_rate=1.0,
+            ci_pass_rate=1.0,
+            zero_ungrounded_rate=1.0,
+            generalist_review_pass_rate=1.0,
+            mean_generalist_review_score=8.0,
+            policyengine_case_count=0,
+            policyengine_pass_rate=None,
+            mean_policyengine_score=None,
+            mean_estimated_cost_usd=0.25,
+            gate_results=[],
+        )
+
+        with patch("autorac.cli.load_eval_suite_manifest") as mock_load, patch(
+            "autorac.cli.run_eval_suite", return_value=[fake_result]
+        ) as mock_run, patch(
+            "autorac.cli.summarize_readiness", return_value=fake_summary
+        ):
+            mock_load.return_value.name = "Readiness"
+            mock_load.return_value.path = manifest_file
+            mock_load.return_value.runners = ["openai:gpt-5.4"]
+            mock_load.return_value.cases = [MagicMock(kind="source")]
+            mock_load.return_value.gates = MagicMock()
+
+            with pytest.raises(SystemExit) as exc_info:
+                cmd_eval_suite(args)
+
+        assert exc_info.value.code == 1
+        assert mock_run.called
+        assert mock_run.call_args.kwargs["runner_specs"] == ["codex:gpt-5.4"]
+        captured = capsys.readouterr()
+        assert "NOT READY" in captured.out
+        assert (args.output / "results.json").exists()
+        assert (args.output / "summary.json").exists()
+
+
+class TestCmdEvalSuiteReport:
+    def test_renders_markdown_and_writes_csv(self, tmp_path, capsys):
+        payload = {
+            "manifest": {"name": "UK paper", "path": "/tmp/suite.yaml"},
+            "results": [
+                {
+                    "citation": "case-a",
+                    "runner": "gpt-5.4",
+                    "success": True,
+                    "duration_ms": 1000,
+                    "estimated_cost_usd": 0.1,
+                    "output_file": "/tmp/gpt.rac",
+                    "metrics": {
+                        "compile_pass": True,
+                        "ci_pass": True,
+                        "ungrounded_numeric_count": 0,
+                        "policyengine_score": 1.0,
+                    },
+                },
+                {
+                    "citation": "case-a",
+                    "runner": "claude-opus",
+                    "success": True,
+                    "duration_ms": 2000,
+                    "estimated_cost_usd": 0.2,
+                    "output_file": "/tmp/claude.rac",
+                    "metrics": {
+                        "compile_pass": True,
+                        "ci_pass": True,
+                        "ungrounded_numeric_count": 0,
+                        "policyengine_score": 0.5,
+                    },
+                },
+            ],
+            "readiness": {
+                "gpt-5.4": {
+                    "total_cases": 1,
+                    "success_rate": 1.0,
+                    "compile_pass_rate": 1.0,
+                    "ci_pass_rate": 1.0,
+                    "zero_ungrounded_rate": 1.0,
+                    "policyengine_pass_rate": 1.0,
+                    "mean_policyengine_score": 1.0,
+                    "mean_estimated_cost_usd": 0.1,
+                    "mean_duration_ms": 1000,
+                },
+                "claude-opus": {
+                    "total_cases": 1,
+                    "success_rate": 1.0,
+                    "compile_pass_rate": 1.0,
+                    "ci_pass_rate": 1.0,
+                    "zero_ungrounded_rate": 1.0,
+                    "policyengine_pass_rate": 1.0,
+                    "mean_policyengine_score": 0.5,
+                    "mean_estimated_cost_usd": 0.2,
+                    "mean_duration_ms": 2000,
+                },
+            },
+        }
+        result_json = tmp_path / "results.json"
+        result_json.write_text(json.dumps(payload))
+        csv_out = tmp_path / "cases.csv"
+        md_out = tmp_path / "report.md"
+        args = SimpleNamespace(
+            result_json=result_json,
+            left_runner=None,
+            right_runner=None,
+            markdown_out=md_out,
+            csv_out=csv_out,
+            json=False,
+        )
+
+        cmd_eval_suite_report(args)
+
+        captured = capsys.readouterr()
+        assert "# UK paper model comparison" in captured.out
+        assert "gpt-5.4" in captured.out
+        assert csv_out.exists()
+        assert md_out.exists()
+        assert "case-a" in csv_out.read_text()
 
     def test_sync_sdk_sessions_dispatches(self):
         with patch("sys.argv", ["autorac", "sync-sdk-sessions"]):
@@ -403,6 +681,111 @@ class TestCmdValidate:
             with pytest.raises(SystemExit) as exc_info:
                 cmd_validate(args)
             assert exc_info.value.code == 0
+
+    def test_validate_json_output_with_reviewresults_object(self, capsys, tmp_path):
+        rac_file = tmp_path / "test.rac"
+        rac_file.write_text("# test")
+        args = MagicMock()
+        args.file = rac_file
+        args.json = True
+        args.skip_reviewers = False
+        args.oracle = "policyengine"
+        args.min_match = 0.95
+
+        mock_result = MagicMock()
+        mock_result.all_passed = True
+        mock_result.ci_pass = True
+        mock_result.results = {
+            "policyengine": MagicMock(score=1.0, error=None),
+        }
+        mock_result.to_actual_scores.return_value = ReviewResults(
+            reviews=[
+                ReviewResult(reviewer="rac_reviewer", passed=True, items_checked=1, items_passed=1),
+                ReviewResult(reviewer="formula_reviewer", passed=True, items_checked=2, items_passed=2),
+                ReviewResult(reviewer="parameter_reviewer", passed=False, items_checked=2, items_passed=1),
+                ReviewResult(reviewer="integration_reviewer", passed=True, items_checked=1, items_passed=1),
+            ],
+            policyengine_match=1.0,
+            taxsim_match=None,
+        )
+        mock_result.total_duration_ms = 100
+
+        with patch("autorac.cli.ValidatorPipeline") as mock_pipeline_cls:
+            mock_pipeline_cls.return_value.validate.return_value = mock_result
+            with pytest.raises(SystemExit) as exc_info:
+                cmd_validate(args)
+            assert exc_info.value.code == 0
+
+        output = json.loads(capsys.readouterr().out)
+        assert output["scores"]["rac_reviewer"] == 10.0
+        assert output["scores"]["parameter_reviewer"] == 5.0
+        assert output["oracle_scores"]["policyengine"] == 1.0
+
+    def test_validate_passes_skip_reviewers_to_pipeline(self, tmp_path):
+        rac_file = tmp_path / "test.rac"
+        rac_file.write_text("# test")
+        args = MagicMock()
+        args.file = rac_file
+        args.json = False
+        args.skip_reviewers = True
+        args.oracle = None
+        args.min_match = 0.95
+
+        mock_result = MagicMock()
+        mock_result.all_passed = True
+        mock_result.ci_pass = True
+        mock_result.results = {}
+        mock_result.to_actual_scores.return_value = MagicMock(
+            rac_reviewer=None,
+            formula_reviewer=None,
+            parameter_reviewer=None,
+            integration_reviewer=None,
+            policyengine_match=None,
+            taxsim_match=None,
+        )
+
+        with patch("autorac.cli.ValidatorPipeline") as mock_pipeline_cls:
+            mock_pipeline = mock_pipeline_cls.return_value
+            mock_pipeline.validate.return_value = mock_result
+            with pytest.raises(SystemExit) as exc_info:
+                cmd_validate(args)
+            assert exc_info.value.code == 0
+            mock_pipeline.validate.assert_called_once_with(
+                rac_file.resolve(), skip_reviewers=True
+            )
+
+    def test_validate_json_output_uses_null_scores_when_reviewers_skipped(
+        self, capsys, tmp_path
+    ):
+        rac_file = tmp_path / "test.rac"
+        rac_file.write_text("# test")
+        args = MagicMock()
+        args.file = rac_file
+        args.json = True
+        args.skip_reviewers = True
+        args.oracle = "policyengine"
+        args.min_match = 0.95
+
+        mock_result = MagicMock()
+        mock_result.all_passed = True
+        mock_result.ci_pass = True
+        mock_result.results = {"policyengine": MagicMock(score=1.0, error=None)}
+        mock_result.to_actual_scores.return_value = ReviewResults(
+            reviews=[],
+            policyengine_match=1.0,
+            taxsim_match=None,
+        )
+        mock_result.total_duration_ms = 100
+
+        with patch("autorac.cli.ValidatorPipeline") as mock_pipeline_cls:
+            mock_pipeline_cls.return_value.validate.return_value = mock_result
+            with pytest.raises(SystemExit) as exc_info:
+                cmd_validate(args)
+            assert exc_info.value.code == 0
+
+        output = json.loads(capsys.readouterr().out)
+        assert output["scores"]["rac_reviewer"] is None
+        assert output["scores"]["parameter_reviewer"] is None
 
     def test_validate_rac_us_not_found_uses_defaults(self, capsys, tmp_path):
         """When rac_us can't be found by walking, use default paths."""
@@ -1357,11 +1740,7 @@ class TestCmdEncode:
         """Run cmd_encode with a mocked orchestrator, return (Orchestrator_cls, exit_code)."""
         mock_orchestrator = MagicMock()
         mock_orchestrator.print_report.return_value = "Report content"
-
-        async def mock_encode(**kwargs):
-            return mock_run
-
-        mock_orchestrator.encode = mock_encode
+        mock_orchestrator.encode = AsyncMock(return_value=mock_run)
 
         with patch(
             "autorac.harness.orchestrator.Orchestrator",
@@ -1387,6 +1766,17 @@ class TestCmdEncode:
         mock_cls, exit_code = self._run_encode(args, self._make_mock_run(success=True))
         assert exit_code == 0
 
+    def test_encode_leaf_citation_uses_parent_directory_output_path(
+        self, capsys, tmp_path
+    ):
+        args = self._make_args(tmp_path, citation="26 USC 24(a)")
+        mock_cls, exit_code = self._run_encode(args, self._make_mock_run(success=True))
+
+        assert exit_code == 0
+        mock_cls.return_value.encode.assert_awaited_once()
+        kwargs = mock_cls.return_value.encode.await_args.kwargs
+        assert kwargs["output_path"] == tmp_path / "statute" / "26" / "24"
+
     def test_encode_defaults_to_cli_backend(self, capsys, tmp_path):
         """No --backend flag defaults to CLI backend."""
         args = self._make_args(tmp_path, backend="cli")
@@ -1406,6 +1796,17 @@ class TestCmdEncode:
             model="test-model",
             db_path=tmp_path / "test.db",
             backend="api",
+            atlas_path=None,
+        )
+
+    def test_encode_openai_backend(self, capsys, tmp_path):
+        """--backend openai passes 'openai' to Orchestrator."""
+        args = self._make_args(tmp_path, backend="openai")
+        mock_cls, _ = self._run_encode(args, self._make_mock_run())
+        mock_cls.assert_called_once_with(
+            model="test-model",
+            db_path=tmp_path / "test.db",
+            backend="openai",
             atlas_path=None,
         )
 
@@ -1432,6 +1833,18 @@ class TestCmdEncode:
             with patch.dict("os.environ", env, clear=True):
                 with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
                     Orchestrator(backend="api")
+
+    def test_encode_openai_backend_no_key_errors(self, tmp_path):
+        """OpenAI backend without OPENAI_API_KEY raises clear error."""
+        from autorac.harness.orchestrator import Orchestrator
+
+        with patch.dict("os.environ", {}, clear=True):
+            import os
+
+            env = {k: v for k, v in os.environ.items() if k != "OPENAI_API_KEY"}
+            with patch.dict("os.environ", env, clear=True):
+                with pytest.raises(ValueError, match="OPENAI_API_KEY"):
+                    Orchestrator(backend="openai")
 
     def test_encode_backend_shown_in_output(self, capsys, tmp_path):
         """Backend name is printed in the output."""
@@ -1541,7 +1954,7 @@ class TestSessionCommands:
     def test_sessions_list(self, capsys, tmp_path):
         db_path = tmp_path / "test.db"
         db = EncodingDB(db_path)
-        session = db.start_session(model="test-model")
+        session = db.start_session(model="test-model", autorac_version="0.2.1")
         db.end_session(session.id)
 
         args = MagicMock()
@@ -1550,6 +1963,7 @@ class TestSessionCommands:
         cmd_sessions(args)
         captured = capsys.readouterr()
         assert "ended" in captured.out
+        assert "0.2.1" in captured.out
 
     def test_sessions_empty(self, capsys, tmp_path):
         db_path = tmp_path / "test.db"
@@ -1611,6 +2025,7 @@ class TestSessionCommands:
         captured = capsys.readouterr()
         output = json.loads(captured.out)
         assert output["session"]["id"] == session.id
+        assert "autorac_version" in output["session"]
 
     def test_session_stats(self, capsys, tmp_path):
         db_path = tmp_path / "test.db"
@@ -1821,6 +2236,44 @@ class TestCmdValidateEdgeCases:
             # Verify rac_path was resolved via rac_us.parent / "rac"
             call_kwargs = mock_pipeline_cls.call_args[1]
             assert "rac-us" in str(call_kwargs["rac_us_path"])
+
+    def test_validate_fallback_prefers_workspace_repo_roots(self, tmp_path):
+        rac_file = tmp_path / "generated" / "test.rac"
+        rac_file.parent.mkdir(parents=True)
+        rac_file.write_text("# test")
+
+        args = MagicMock()
+        args.file = rac_file
+        args.json = False
+        args.skip_reviewers = True
+        args.oracle = None
+        args.min_match = 0.95
+
+        mock_result = MagicMock()
+        mock_result.all_passed = True
+        mock_result.ci_pass = True
+        mock_result.results = {}
+        mock_result.to_actual_scores.return_value = MagicMock(
+            rac_reviewer=None,
+            formula_reviewer=None,
+            parameter_reviewer=None,
+            integration_reviewer=None,
+            policyengine_match=None,
+            taxsim_match=None,
+        )
+
+        with patch("autorac.cli.ValidatorPipeline") as mock_pipeline_cls:
+            mock_pipeline = mock_pipeline_cls.return_value
+            mock_pipeline.validate.return_value = mock_result
+            with pytest.raises(SystemExit) as exc_info:
+                cmd_validate(args)
+            assert exc_info.value.code == 0
+
+        call_kwargs = mock_pipeline_cls.call_args[1]
+        assert call_kwargs["rac_us_path"] == Path(
+            "/Users/maxghenis/TheAxiomFoundation/rac-us"
+        )
+        assert call_kwargs["rac_path"] == Path("/Users/maxghenis/TheAxiomFoundation/rac")
 
 
 class TestCmdCalibrationEdgeCases:

@@ -4,6 +4,7 @@ Tests the _scan_unresolved_imports, _citation_from_path,
 _extract_rac_content, and _resolve_external_dependencies methods.
 """
 
+import asyncio
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -144,22 +145,30 @@ class TestExtractRacContent:
         result = orchestrator._extract_rac_content(response)
         assert "#26 USC 62" in result
 
+    def test_docstring_first_content_preserved(self, orchestrator):
+        response = (
+            '"""\n26 USC 24(a)\n"""\n\n'
+            "child_tax_credit_amount_per_qualifying_child:\n"
+            "    from 1998-01-01: 1000\n"
+        )
+        result = orchestrator._extract_rac_content(response)
+        assert result.startswith('"""')
+        assert "child_tax_credit_amount_per_qualifying_child:" in result
+
     def test_empty_response(self, orchestrator):
         assert orchestrator._extract_rac_content("") is None
         assert orchestrator._extract_rac_content("   \n  ") is None
 
 
 class TestResolveExternalDependencies:
-    @pytest.mark.asyncio
-    async def test_no_unresolved_returns_empty(self, orchestrator, dir_21):
+    def test_no_unresolved_returns_empty(self, orchestrator, dir_21):
         """When no unresolved imports, returns empty list."""
         (dir_21 / "a.rac").write_text("# no imports\nstatus: encoded\n")
 
-        result = await orchestrator._resolve_external_dependencies(dir_21)
+        result = asyncio.run(orchestrator._resolve_external_dependencies(dir_21))
         assert result == []
 
-    @pytest.mark.asyncio
-    async def test_creates_stub_for_unresolved(self, orchestrator, dir_21):
+    def test_creates_stub_for_unresolved(self, orchestrator, dir_21):
         """Creates stub file for unresolved import."""
         (dir_21 / "a.rac").write_text("x:\n    imports:\n        - 26/9999#some_var\n")
 
@@ -182,12 +191,101 @@ class TestResolveExternalDependencies:
                 orchestrator, "_fetch_statute_text", return_value="Some statute text"
             ),
         ):
-            result = await orchestrator._resolve_external_dependencies(dir_21)
+            result = asyncio.run(orchestrator._resolve_external_dependencies(dir_21))
 
         assert len(result) == 1
         assert result[0].exists()
         content = result[0].read_text()
         assert "some_var:" in content
+
+    def test_does_not_overwrite_existing_file_for_missing_variable(
+        self, orchestrator, dir_21
+    ):
+        """Resolver should not clobber an existing file just because a variable is missing."""
+        (dir_21 / "a.rac").write_text("x:\n    imports:\n        - 26/21/b#missing_var\n")
+        existing_target = dir_21 / "b.rac"
+        existing_target.write_text(
+            "# 26 USC 21(b)\nstatus: encoded\nexisting_var:\n    entity: TaxUnit\n"
+        )
+
+        with patch.object(
+            orchestrator,
+            "_run_agent",
+            new_callable=AsyncMock,
+        ) as mock_run:
+            result = asyncio.run(orchestrator._resolve_external_dependencies(dir_21))
+
+        assert result == []
+        assert existing_target.read_text().startswith("# 26 USC 21(b)")
+        mock_run.assert_not_called()
+
+    def test_uses_registered_stub_spec_for_known_definition_import(
+        self, orchestrator, dir_21
+    ):
+        """Known canonical definition imports should use the shared stub registry, not LLM generation."""
+        (dir_21 / "a.rac").write_text(
+            "x:\n"
+            "    imports:\n"
+            "        - legislation/ukpga/2002/16/section/3ZA/3#is_member_of_mixed_age_couple\n"
+        )
+
+        with (
+            patch.object(
+                orchestrator,
+                "_run_agent",
+                new_callable=AsyncMock,
+            ) as mock_run,
+            patch.object(orchestrator, "_fetch_statute_text") as mock_fetch,
+        ):
+            result = asyncio.run(orchestrator._resolve_external_dependencies(dir_21))
+
+        assert len(result) == 1
+        assert result[0].exists()
+        content = result[0].read_text()
+        assert "status: stub" in content
+        assert (
+            "stub_for: legislation/ukpga/2002/16/section/3ZA/3#is_member_of_mixed_age_couple"
+            in content
+        )
+        assert "is_member_of_mixed_age_couple:" in content
+        mock_run.assert_not_called()
+        mock_fetch.assert_not_called()
+
+    def test_refuses_stub_creation_when_official_source_is_already_ingested(
+        self, orchestrator, tmp_path
+    ):
+        """If the official source exists locally, the resolver should block stub creation."""
+        repo_root = tmp_path / "rac-us-co"
+        regulation_dir = repo_root / "regulation" / "9-CCR-2503-6" / "3.606.1"
+        regulation_dir.mkdir(parents=True)
+        (regulation_dir / "J.rac").write_text(
+            "grant_rule:\n"
+            "    imports:\n"
+            "        - statute/crs/26-2-703/2.5#is_assistance_unit\n"
+        )
+
+        source_file = (
+            repo_root
+            / "sources"
+            / "official"
+            / "statute"
+            / "crs"
+            / "26-2-703"
+            / "2026-04-03"
+            / "source.html"
+        )
+        source_file.parent.mkdir(parents=True)
+        source_file.write_text("<html>official statute source</html>")
+
+        with patch.object(
+            orchestrator,
+            "_run_agent",
+            new_callable=AsyncMock,
+        ) as mock_run:
+            with pytest.raises(RuntimeError, match="Official source already ingested"):
+                asyncio.run(orchestrator._resolve_external_dependencies(regulation_dir))
+
+        mock_run.assert_not_called()
 
 
 class TestPhaseEnum:

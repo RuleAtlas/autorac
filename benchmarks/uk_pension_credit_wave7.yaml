@@ -1,0 +1,46 @@
+name: UK pension credit wave 7
+runners:
+  - openai:gpt-5.4
+mode: cold
+gates:
+  min_cases: 5
+  min_success_rate: 0.9
+  min_compile_pass_rate: 0.9
+  min_ci_pass_rate: 0.9
+  min_zero_ungrounded_rate: 1.0
+  max_mean_estimated_cost_usd: 0.5
+cases:
+  - kind: source
+    name: pension-credit-prisoner-standard-minimum-guarantee-nil
+    source_id: uksi-2002-1792-regulation-6-3-a
+    source_file: ./sources/uk/pc_prisoner_standard_minimum_guarantee_nil_2025.txt
+    oracle: none
+    policyengine_rac_var_hint: pc_prisoner_standard_minimum_guarantee_weekly_amount
+
+  - kind: source
+    name: pension-credit-prisoner-additional-amount-nil
+    source_id: uksi-2002-1792-regulation-6-3-b
+    source_file: ./sources/uk/pc_prisoner_additional_amount_nil_2025.txt
+    oracle: none
+    policyengine_rac_var_hint: pc_prisoner_additional_amount_weekly_amount
+
+  - kind: source
+    name: pension-credit-earnings-disregard-maximum
+    source_id: uksi-2002-1792-schedule-VI-paragraph-4A-1
+    source_file: ./sources/uk/pc_earnings_disregard_maximum_2025.txt
+    oracle: none
+    policyengine_rac_var_hint: pc_maximum_earnings_disregard_weekly_amount
+
+  - kind: source
+    name: pension-credit-earnings-disregard-single
+    source_id: uksi-2002-1792-schedule-VI-paragraph-5-a
+    source_file: ./sources/uk/pc_earnings_disregard_single_2025.txt
+    oracle: none
+    policyengine_rac_var_hint: pc_single_claimant_earnings_disregard_weekly_amount
+
+  - kind: source
+    name: pension-credit-earnings-disregard-couple
+    source_id: uksi-2002-1792-schedule-VI-paragraph-5-b
+    source_file: ./sources/uk/pc_earnings_disregard_couple_2025.txt
+    oracle: none
+    policyengine_rac_var_hint: pc_couple_claimant_earnings_disregard_weekly_amount
