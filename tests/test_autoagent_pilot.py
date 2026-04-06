@@ -4,11 +4,13 @@ from autorac.harness.autoagent_pilot import (
     AUTOAGENT_PILOT_MANIFESTS,
 )
 from autorac.harness.autoresearch_pilot import (
+    AUTORESEARCH_FINAL_REVIEW_MANIFESTS,
     AUTORESEARCH_PILOT_MANIFESTS,
     autorac_repo_root,
     build_mutation_prompt,
     extract_autoresearch_score,
     extract_primary_runner_summary,
+    final_review_manifest_paths,
     load_autoresearch_report,
     pilot_editable_paths,
     pilot_manifest_paths,
@@ -31,6 +33,14 @@ def test_pilot_manifest_paths_resolve_existing_files():
 
 def test_autoagent_alias_points_at_same_manifest_set():
     assert AUTOAGENT_PILOT_MANIFESTS == AUTORESEARCH_PILOT_MANIFESTS
+
+
+def test_final_review_manifest_paths_resolve_existing_files():
+    manifests = final_review_manifest_paths()
+
+    assert len(manifests) == len(AUTORESEARCH_FINAL_REVIEW_MANIFESTS)
+    assert all(path.exists() for path in manifests)
+    assert manifests[0].name == "uk_autoresearch_final_review.yaml"
 
 
 def test_pilot_editable_paths_point_at_prompt_surface():
@@ -175,3 +185,4 @@ def test_build_mutation_prompt_mentions_only_editable_file():
     assert "program.md" in prompt
     assert "baseline-report.json" in prompt
     assert "Do not create, delete, or rename files." in prompt
+    assert "separate holdout final-review set" in prompt

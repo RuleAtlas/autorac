@@ -44,8 +44,10 @@ def main() -> int:
         autorac_repo_root,
         build_mutation_prompt,
         extract_autoresearch_score,
+        final_review_manifest_paths,
         load_autoresearch_report,
         pilot_editable_paths,
+        pilot_manifest_paths,
         program_path,
         shared_legislation_cache_root,
         should_keep_candidate,
@@ -67,7 +69,13 @@ def main() -> int:
         "--baseline-report",
         type=Path,
         default=None,
-        help="Existing autoresearch-pilot-report.json to use as the baseline",
+        help="Existing inner-loop training autoresearch-pilot-report.json to use as the baseline",
+    )
+    parser.add_argument(
+        "--baseline-final-review-report",
+        type=Path,
+        default=None,
+        help="Existing outer-loop final-review autoresearch-pilot-report.json to use as the holdout baseline",
     )
     parser.add_argument(
         "--gpt-backend",
@@ -122,6 +130,8 @@ def main() -> int:
     editable_path = editable_paths[0]
     editable_relpath = editable_path.relative_to(repo_root)
     editable_before = editable_path.read_text()
+    training_manifests = pilot_manifest_paths(repo_root)
+    final_review_manifests = final_review_manifest_paths(repo_root)
 
     baseline_report_path = (
         args.baseline_report.resolve()
@@ -139,6 +149,8 @@ def main() -> int:
             "--shared-legislation-cache-root",
             str(legislation_cache_root),
         ]
+        for manifest in training_manifests:
+            baseline_cmd.extend(["--manifest", str(manifest)])
         if args.gpt_backend:
             baseline_cmd.extend(["--gpt-backend", args.gpt_backend])
         baseline_process = _run_cmd(baseline_cmd, cwd=repo_root, env=env)
@@ -151,6 +163,12 @@ def main() -> int:
 
     baseline_report = load_autoresearch_report(baseline_report_path)
     baseline_score = extract_autoresearch_score(baseline_report)
+    baseline_final_review_report_path = (
+        args.baseline_final_review_report.resolve()
+        if args.baseline_final_review_report is not None
+        else output_root / "baseline-final-review" / "autoresearch-pilot-report.json"
+    )
+    baseline_final_review_score: float | None = None
 
     mutation_workspace = output_root / "mutation-workspace"
     mutation_workspace.mkdir(parents=True, exist_ok=True)
@@ -228,6 +246,8 @@ def main() -> int:
             "--shared-legislation-cache-root",
             str(legislation_cache_root),
         ]
+        for manifest in training_manifests:
+            candidate_cmd.extend(["--manifest", str(manifest)])
         if args.gpt_backend:
             candidate_cmd.extend(["--gpt-backend", args.gpt_backend])
         candidate_process = _run_cmd(candidate_cmd, cwd=repo_root, env=env)
@@ -240,7 +260,7 @@ def main() -> int:
 
         candidate_report = load_autoresearch_report(candidate_report_path)
         candidate_score = extract_autoresearch_score(candidate_report)
-        keep = should_keep_candidate(
+        passes_training = should_keep_candidate(
             baseline_score,
             candidate_score,
             keep_on_tie=args.keep_on_tie,
@@ -249,12 +269,112 @@ def main() -> int:
             {
                 "candidate_report": str(candidate_report_path),
                 "candidate_score": candidate_score,
-                "candidate_kept": keep,
-                "reason": "candidate_improved_score" if keep else "candidate_did_not_improve",
+                "training_score_improved": passes_training,
             }
         )
-        if not keep:
+        if not passes_training:
+            decision["candidate_kept"] = False
+            decision["reason"] = "candidate_did_not_improve_training"
             editable_path.write_text(editable_before)
+        else:
+            if not baseline_final_review_report_path.exists():
+                baseline_final_root = baseline_final_review_report_path.parent
+                baseline_final_root.mkdir(parents=True, exist_ok=True)
+                baseline_final_cmd = [
+                    sys.executable,
+                    str(repo_root / "scripts" / "run_autoresearch_pilot.py"),
+                    "--output-root",
+                    str(baseline_final_root),
+                    "--shared-legislation-cache-root",
+                    str(legislation_cache_root),
+                ]
+                for manifest in final_review_manifests:
+                    baseline_final_cmd.extend(["--manifest", str(manifest)])
+                if args.gpt_backend:
+                    baseline_final_cmd.extend(["--gpt-backend", args.gpt_backend])
+                baseline_final_process = _run_cmd(
+                    baseline_final_cmd,
+                    cwd=repo_root,
+                    env=env,
+                )
+                (baseline_final_root / "run.stdout").write_text(
+                    baseline_final_process.stdout
+                )
+                (baseline_final_root / "run.stderr").write_text(
+                    baseline_final_process.stderr
+                )
+                if baseline_final_process.returncode != 0:
+                    raise SystemExit(
+                        "Baseline final-review pilot failed with exit code "
+                        f"{baseline_final_process.returncode}"
+                    )
+
+            baseline_final_review_report = load_autoresearch_report(
+                baseline_final_review_report_path
+            )
+            baseline_final_review_score = extract_autoresearch_score(
+                baseline_final_review_report
+            )
+
+            candidate_final_root = output_root / "candidate-final-review"
+            candidate_final_report_path = (
+                candidate_final_root / "autoresearch-pilot-report.json"
+            )
+            candidate_final_root.mkdir(parents=True, exist_ok=True)
+            candidate_final_cmd = [
+                sys.executable,
+                str(repo_root / "scripts" / "run_autoresearch_pilot.py"),
+                "--output-root",
+                str(candidate_final_root),
+                "--shared-legislation-cache-root",
+                str(legislation_cache_root),
+            ]
+            for manifest in final_review_manifests:
+                candidate_final_cmd.extend(["--manifest", str(manifest)])
+            if args.gpt_backend:
+                candidate_final_cmd.extend(["--gpt-backend", args.gpt_backend])
+            candidate_final_process = _run_cmd(
+                candidate_final_cmd,
+                cwd=repo_root,
+                env=env,
+            )
+            (candidate_final_root / "run.stdout").write_text(
+                candidate_final_process.stdout
+            )
+            (candidate_final_root / "run.stderr").write_text(
+                candidate_final_process.stderr
+            )
+            if candidate_final_process.returncode != 0:
+                raise SystemExit(
+                    "Candidate final-review pilot failed with exit code "
+                    f"{candidate_final_process.returncode}"
+                )
+
+            candidate_final_report = load_autoresearch_report(candidate_final_report_path)
+            candidate_final_score = extract_autoresearch_score(candidate_final_report)
+            passes_final_review = should_keep_candidate(
+                baseline_final_review_score,
+                candidate_final_score,
+                keep_on_tie=True,
+            )
+            decision.update(
+                {
+                    "baseline_final_review_report": str(
+                        baseline_final_review_report_path
+                    ),
+                    "baseline_final_review_score": baseline_final_review_score,
+                    "candidate_final_review_report": str(candidate_final_report_path),
+                    "candidate_final_review_score": candidate_final_score,
+                    "passes_final_review": passes_final_review,
+                }
+            )
+            if passes_final_review:
+                decision["candidate_kept"] = True
+                decision["reason"] = "candidate_improved_training_and_preserved_final_review"
+            else:
+                decision["candidate_kept"] = False
+                decision["reason"] = "candidate_regressed_final_review"
+                editable_path.write_text(editable_before)
     finally:
         if not decision["candidate_kept"] and editable_path.read_text() != editable_before:
             editable_path.write_text(editable_before)

@@ -84,10 +84,12 @@ experiments. It is structured in an autoresearch style:
 The pilot is meant to optimize harness wording, not the corpus repos or
 promotion flow.
 
-- Frozen repair manifests:
+- Frozen inner-loop repair manifests:
   - `benchmarks/uk_wave18_remaining_repair.yaml`
   - `benchmarks/uk_wave19_failure_repair.yaml`
   - `benchmarks/uk_wave19_branch_conjunction_repair.yaml`
+- Outer-loop final-review holdout:
+  - `benchmarks/uk_autoresearch_final_review.yaml`
 - Editable surface:
   - `src/autorac/harness/eval_prompt_surface.py`
 - Program:
@@ -115,8 +117,9 @@ uv run python scripts/run_autoresearch_iteration.py --gpt-backend codex
 That script:
 - computes or reuses a baseline pilot report
 - asks Codex to edit only `src/autorac/harness/eval_prompt_surface.py`
-- re-runs the frozen manifests on the candidate prompt surface
-- keeps the candidate only if the aggregate score improves
+- re-runs the inner-loop frozen manifests on the candidate prompt surface
+- then runs the separate final-review holdout set
+- keeps the candidate only if training improves and final review does not regress
 
 The score heavily rewards readiness and deterministic/semantic pass rates, with
 cost used only as a small tiebreaker.

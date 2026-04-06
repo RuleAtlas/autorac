@@ -20,11 +20,13 @@ from textwrap import dedent
 from .eval_prompt_surface import AUTOAGENT_PILOT_EDITABLE_FILES
 
 AUTORESEARCH_PROGRAM_PATH = "autoresearch/program.md"
-AUTORESEARCH_PILOT_MANIFESTS = (
+AUTORESEARCH_TRAINING_MANIFESTS = (
     "benchmarks/uk_wave18_remaining_repair.yaml",
     "benchmarks/uk_wave19_failure_repair.yaml",
     "benchmarks/uk_wave19_branch_conjunction_repair.yaml",
 )
+AUTORESEARCH_FINAL_REVIEW_MANIFESTS = ("benchmarks/uk_autoresearch_final_review.yaml",)
+AUTORESEARCH_PILOT_MANIFESTS = AUTORESEARCH_TRAINING_MANIFESTS
 LEGISLATION_CACHE_DIR_NAMES = ("_legislation_gov_uk", "_legislation_gov_uk_cache")
 
 
@@ -48,9 +50,15 @@ def shared_legislation_cache_root() -> Path:
 
 
 def pilot_manifest_paths(repo_root: Path | None = None) -> list[Path]:
-    """Resolve the frozen pilot manifest set."""
+    """Resolve the frozen inner-loop training manifest set."""
     root = repo_root or autorac_repo_root()
-    return [(root / rel).resolve() for rel in AUTORESEARCH_PILOT_MANIFESTS]
+    return [(root / rel).resolve() for rel in AUTORESEARCH_TRAINING_MANIFESTS]
+
+
+def final_review_manifest_paths(repo_root: Path | None = None) -> list[Path]:
+    """Resolve the frozen outer-loop holdout manifest set."""
+    root = repo_root or autorac_repo_root()
+    return [(root / rel).resolve() for rel in AUTORESEARCH_FINAL_REVIEW_MANIFESTS]
 
 
 def pilot_editable_paths(repo_root: Path | None = None) -> list[Path]:
@@ -148,6 +156,7 @@ def build_mutation_prompt(
         Context:
         - Read `{program_relpath}` for the optimization rules.
         - Read `{baseline_report_relpath}` for the current baseline score and per-manifest results.
+        - Your candidate will also be judged on a separate holdout final-review set outside this training report, so avoid broad stylistic rewrites that could shift semantics.
 
         Hard constraints:
         - Edit only `{editable_relpath}`.

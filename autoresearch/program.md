@@ -27,11 +27,25 @@ Run all of:
 - `benchmarks/uk_wave19_failure_repair.yaml`
 - `benchmarks/uk_wave19_branch_conjunction_repair.yaml`
 
+Treat those as the inner-loop training set.
+
 These are repair slices for known UK failure patterns:
 
 - binding lead-in conjuncts
 - conditional amount/exclusion leaves
 - branch conjunction vs material implication
+
+## Final review holdout
+
+A candidate is not accepted on training score alone.
+
+It must also avoid regressing the separate holdout final-review set:
+
+- `benchmarks/uk_autoresearch_final_review.yaml`
+
+That holdout is intentionally outside the mutation brief above, so broad
+wording changes that look harmless on the repair slices still have to survive a
+second pass.
 
 ## Runner
 
@@ -62,6 +76,8 @@ first, cost second.
 
 - Keep a change only if the aggregate score improves or a tie is broken by
   clearer prompt wording with no regressions.
+- Also require the candidate to preserve or improve the separate final-review
+  holdout score.
 - Discard any change that lowers readiness, weakens checks, or increases
   semantic regressions even if it improves a single case.
 
