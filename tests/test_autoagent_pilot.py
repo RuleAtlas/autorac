@@ -26,9 +26,10 @@ from autorac.harness.autoresearch_pilot import (
 def test_pilot_manifest_paths_resolve_existing_files():
     manifests = pilot_manifest_paths()
 
-    assert len(manifests) == 3
+    assert len(manifests) == 4
     assert all(path.exists() for path in manifests)
     assert manifests[0].name == "uk_wave18_remaining_repair.yaml"
+    assert manifests[-1].name == "uk_autoresearch_semantic_margin.yaml"
 
 
 def test_autoagent_alias_points_at_same_manifest_set():

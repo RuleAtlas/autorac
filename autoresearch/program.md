@@ -26,6 +26,7 @@ Run all of:
 - `benchmarks/uk_wave18_remaining_repair.yaml`
 - `benchmarks/uk_wave19_failure_repair.yaml`
 - `benchmarks/uk_wave19_branch_conjunction_repair.yaml`
+- `benchmarks/uk_autoresearch_semantic_margin.yaml`
 
 Treat those as the inner-loop training set.
 
@@ -34,6 +35,10 @@ These are repair slices for known UK failure patterns:
 - binding lead-in conjuncts
 - conditional amount/exclusion leaves
 - branch conjunction vs material implication
+- weekly amount/divisor semantics
+- unnecessary entitlement guards
+- distinct statutory disjuncts or benefit routes collapsed into one fact
+- person-vs-family modeling of personal benefit receipt
 
 If the current baseline report is already fully ready across that training set,
 assume the prompt surface is near-optimal. In that situation, prefer a no-op

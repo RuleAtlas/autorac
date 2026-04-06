@@ -24,6 +24,7 @@ AUTORESEARCH_TRAINING_MANIFESTS = (
     "benchmarks/uk_wave18_remaining_repair.yaml",
     "benchmarks/uk_wave19_failure_repair.yaml",
     "benchmarks/uk_wave19_branch_conjunction_repair.yaml",
+    "benchmarks/uk_autoresearch_semantic_margin.yaml",
 )
 AUTORESEARCH_FINAL_REVIEW_MANIFESTS = ("benchmarks/uk_autoresearch_final_review.yaml",)
 AUTORESEARCH_PILOT_MANIFESTS = AUTORESEARCH_TRAINING_MANIFESTS
