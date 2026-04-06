@@ -15,6 +15,7 @@ import json
 import os
 import shutil
 from pathlib import Path
+from textwrap import dedent
 
 from .eval_prompt_surface import AUTOAGENT_PILOT_EDITABLE_FILES
 
@@ -97,6 +98,69 @@ def load_suite_summary(path: Path) -> dict:
     if "readiness" in payload:
         return payload
     raise ValueError(f"Unsupported eval-suite payload: {path}")
+
+
+def load_autoresearch_report(path: Path) -> dict:
+    """Load a persisted autoresearch pilot report."""
+    payload = json.loads(path.read_text())
+    if "aggregate_score" not in payload or "results" not in payload:
+        raise ValueError(f"Unsupported autoresearch report: {path}")
+    return payload
+
+
+def extract_autoresearch_score(report: dict) -> float:
+    """Extract the aggregate scalar score from a pilot report."""
+    score = report.get("aggregate_score")
+    if score is None:
+        raise ValueError("Autoresearch report is missing aggregate_score")
+    return float(score)
+
+
+def should_keep_candidate(
+    baseline_score: float,
+    candidate_score: float,
+    *,
+    keep_on_tie: bool = False,
+) -> bool:
+    """Return whether a candidate prompt surface should replace the baseline."""
+    if candidate_score > baseline_score:
+        return True
+    if keep_on_tie and candidate_score == baseline_score:
+        return True
+    return False
+
+
+def build_mutation_prompt(
+    *,
+    editable_relpath: str,
+    program_relpath: str,
+    baseline_report_relpath: str,
+) -> str:
+    """Build the prompt used for one autoresearch mutation iteration."""
+    return dedent(
+        f"""
+        You are running one autoresearch iteration for AutoRAC.
+
+        Goal:
+        - Improve the frozen benchmark score by editing exactly one file:
+          `{editable_relpath}`
+
+        Context:
+        - Read `{program_relpath}` for the optimization rules.
+        - Read `{baseline_report_relpath}` for the current baseline score and per-manifest results.
+
+        Hard constraints:
+        - Edit only `{editable_relpath}`.
+        - Do not create, delete, or rename files.
+        - Do not weaken correctness gates or ask for validator changes.
+        - Prefer a no-op over speculative churn if the current wording already looks near-optimal.
+
+        Output rules:
+        - Modify the file in place if you have a concrete improvement.
+        - If you do not have a justified improvement, leave the file unchanged.
+        - In your final message, state briefly whether you changed the file and what hypothesis you targeted.
+        """
+    ).strip()
 
 
 def _candidate_legislation_cache_sources(

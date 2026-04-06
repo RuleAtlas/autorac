@@ -106,6 +106,18 @@ The script:
 - writes per-manifest outputs plus an aggregate report
 - prints a single `AUTORESEARCH_SCORE=...` scalar for outer-loop optimization
 
+To run one real mutate-score-keep iteration on the same frozen set:
+
+```bash
+uv run python scripts/run_autoresearch_iteration.py --gpt-backend codex
+```
+
+That script:
+- computes or reuses a baseline pilot report
+- asks Codex to edit only `src/autorac/harness/eval_prompt_surface.py`
+- re-runs the frozen manifests on the candidate prompt surface
+- keeps the candidate only if the aggregate score improves
+
 The score heavily rewards readiness and deterministic/semantic pass rates, with
 cost used only as a small tiebreaker.
 

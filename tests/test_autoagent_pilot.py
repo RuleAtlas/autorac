@@ -6,13 +6,17 @@ from autorac.harness.autoagent_pilot import (
 from autorac.harness.autoresearch_pilot import (
     AUTORESEARCH_PILOT_MANIFESTS,
     autorac_repo_root,
+    build_mutation_prompt,
+    extract_autoresearch_score,
     extract_primary_runner_summary,
+    load_autoresearch_report,
     pilot_editable_paths,
     pilot_manifest_paths,
     program_path,
     score_readiness_summary,
     seed_legislation_cache,
     shared_legislation_cache_root,
+    should_keep_candidate,
     sync_legislation_cache,
 )
 
@@ -133,3 +137,41 @@ def test_extract_primary_runner_summary_returns_first_runner():
 
     assert runner == "codex-gpt-5.4"
     assert summary == {"ready": True}
+
+
+def test_load_autoresearch_report_and_extract_score(tmp_path):
+    report_path = tmp_path / "report.json"
+    report_path.write_text(
+        """{
+  "aggregate_score": 99.5,
+  "results": []
+}
+"""
+    )
+
+    report = load_autoresearch_report(report_path)
+
+    assert extract_autoresearch_score(report) == 99.5
+
+
+def test_should_keep_candidate_uses_strict_improvement_by_default():
+    assert should_keep_candidate(99.0, 99.1) is True
+    assert should_keep_candidate(99.0, 99.0) is False
+    assert should_keep_candidate(99.0, 98.9) is False
+
+
+def test_should_keep_candidate_can_keep_on_tie():
+    assert should_keep_candidate(99.0, 99.0, keep_on_tie=True) is True
+
+
+def test_build_mutation_prompt_mentions_only_editable_file():
+    prompt = build_mutation_prompt(
+        editable_relpath="src/autorac/harness/eval_prompt_surface.py",
+        program_relpath="program.md",
+        baseline_report_relpath="baseline-report.json",
+    )
+
+    assert "src/autorac/harness/eval_prompt_surface.py" in prompt
+    assert "program.md" in prompt
+    assert "baseline-report.json" in prompt
+    assert "Do not create, delete, or rename files." in prompt
