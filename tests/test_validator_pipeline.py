@@ -256,6 +256,15 @@ class TestExtractNumbersFromText:
         assert 0.1 in numbers
         assert 10.0 not in numbers
 
+    def test_extracts_small_cardinal_words_for_grounding(self):
+        numbers = extract_numbers_from_text(
+            "the last four payments if the last two payments are less than one month apart"
+        )
+
+        assert 4.0 in numbers
+        assert 2.0 in numbers
+        assert 1.0 in numbers
+
 
 class TestExtractNumericOccurrencesFromText:
     def test_ignores_structural_references_and_counts_repeated_scalars(self):

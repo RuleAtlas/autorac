@@ -356,6 +356,25 @@ _ORDINAL_NUMBER_PATTERN = re.compile(r"\b(\d+)(?:st|nd|rd|th)\b", re.IGNORECASE)
 _SUBPOUND_MONEY_PATTERN = re.compile(
     r"(\d+(?:\.\d+)?)\s*(?:pence|penny)\b", re.IGNORECASE
 )
+_CARDINAL_WORD_VALUES = {
+    "zero": 0.0,
+    "one": 1.0,
+    "two": 2.0,
+    "three": 3.0,
+    "four": 4.0,
+    "five": 5.0,
+    "six": 6.0,
+    "seven": 7.0,
+    "eight": 8.0,
+    "nine": 9.0,
+    "ten": 10.0,
+    "eleven": 11.0,
+    "twelve": 12.0,
+}
+_CARDINAL_WORD_PATTERN = re.compile(
+    r"\b(" + "|".join(re.escape(word) for word in _CARDINAL_WORD_VALUES) + r")\b",
+    re.IGNORECASE,
+)
 _DATE_DECOMPOSITION_CUE_TOKENS = {
     "date",
     "birthday",
@@ -537,6 +556,9 @@ def extract_numbers_from_text(text: str) -> set[float]:
     for phrase, value in fraction_words.items():
         if phrase in text_lower:
             numbers.add(value)
+
+    for match in _CARDINAL_WORD_PATTERN.finditer(text_lower):
+        numbers.add(_CARDINAL_WORD_VALUES[match.group(1)])
 
     return numbers
 
