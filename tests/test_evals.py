@@ -565,6 +565,10 @@ example_timing_rule:
 
         assert "less than one month apart" in prompt
         assert "one_month_threshold = 1" in prompt
+        assert "the `one month` comparator is not a standalone numeric scalar" in prompt
+        assert "do not invent `1`-valued threshold/count helpers" in prompt
+        assert "branch-specific output is a `Count` or other non-Boolean basis selector" in prompt
+        assert "do not write an inline conditional without `else`" in prompt
         assert "trigger decomposed-date CI failures" in prompt
 
     def test_build_eval_prompt_for_single_payment_period_discourages_parallel_units(
