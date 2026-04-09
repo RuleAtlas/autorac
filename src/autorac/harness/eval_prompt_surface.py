@@ -19,6 +19,9 @@ def render_uk_legislation_guidance() -> str:
 - Use `Family` only when the encoded quantity is explicitly aggregate at claimant or benefit-unit level.
 - For UK rate leaves with one grounded monetary amount, encode the directly payable person-level or unit-level amount described by the text; do not collapse it into an unconditional family-level constant.
 - If the operative subject of the slice is an individual payment or `that payment`, preserve that payment-scoped subject in the principal output name and formula; do not silently broaden the rule into an unconditional claimant-level weekly amount or boolean that erases the payment-level trigger.
+- When the source slice genuinely operates on individual payments and the rule can be represented as per-payment rows, prefer `entity: Payment` over broadening the logic to `Person` or `Family`.
+- For those payment-scoped leaves, use `status: entity_not_supported` only if even a `Payment`-scoped encoding would still fail to represent the statutory consequence faithfully.
+- In `.rac.test` for `entity: Payment` outputs, provide per-payment rows under `tables:` and assert the entity output as a row-ordered YAML list rather than flattening payment facts into scalar `input:` values.
 - Use `status: entity_not_supported` for those payment-scoped slices only as a last resort when the supported schema truly cannot represent the statutory consequence faithfully. Do not prefer that fallback when a narrow, payment-scoped approximation can still encode the branch's actual legal effect.
 - For UK `dtype: Money` variables derived from sterling amounts, include `unit: GBP`.
 - If the source states a sterling amount in pence, encode it in pounds sterling as a decimal with `unit: GBP`; for example, `10 pence` should become `0.10`, not `10`.

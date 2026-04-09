@@ -756,7 +756,7 @@ class SDKOrchestrator:
 - `enum Name:` — enumeration with `values:` list
 
 ### Fields (all required unless noted)
-- `entity:` Person | TaxUnit | Household | Family
+- `entity:` Payment | Person | TaxUnit | Household | Family
 - `period:` Year | Month | Day
 - `dtype:` Money | Rate | Boolean | Integer | String | Enum[Name]
 - `formula: |` — Python-like formula (see below)

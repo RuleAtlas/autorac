@@ -199,7 +199,7 @@ Stub files must use the same RAC DSL as normal section files:
 - Do NOT use a `variable:` keyword
 - Put `status:` immediately after the docstring for file-level stubs
 - Use normal definition blocks like `some_name:`
-- Use `entity: TaxUnit|Person|Household|Family`, `period: Year|Month|Day`, `dtype: Money|Boolean|Integer|Rate|String`
+- Use `entity: Payment|TaxUnit|Person|Household|Family`, `period: Year|Month|Day`, `dtype: Money|Boolean|Integer|Rate|String`
 - Quote `label:` and `description:` strings
 - Use 4 spaces for fields under a definition
 - Never emit lowercase schema names like `tax_unit` or `taxable_year`"""
@@ -235,7 +235,7 @@ DSL_CHEATSHEET = """
 - `enum Name:` -- enumeration with `values:` list
 
 ### Fields (all required unless noted)
-- `entity:` Person | TaxUnit | Household | Family
+- `entity:` Payment | Person | TaxUnit | Household | Family
 - `period:` Year | Month | Day
 - `dtype:` Money | Rate | Boolean | Integer | String | Enum[Name]
 - `imports:` -- list of `path#name` (optional)

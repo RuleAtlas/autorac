@@ -72,6 +72,7 @@ AKN_CONTAINER_TAGS = {
     "chapter",
 }
 SUPPORTED_EVAL_ENTITIES = (
+    "Payment",
     "Person",
     "TaxUnit",
     "Household",

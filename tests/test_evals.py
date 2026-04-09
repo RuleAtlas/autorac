@@ -664,6 +664,8 @@ example_timing_rule:
 
         assert "individual payment or `that payment`" in prompt
         assert "preserve that payment-scoped subject" in prompt
+        assert "prefer `entity: Payment`" in prompt
+        assert "provide per-payment rows under `tables:`" in prompt
         assert "Use `status: entity_not_supported`" in prompt
         assert "only as a last resort" in prompt
         assert "Do not prefer that fallback" in prompt
@@ -2296,7 +2298,11 @@ class TestEvalPrompt:
         )
 
         assert "Do not invent new entities, periods, or dtypes." in prompt
-        assert "Allowed `entity:` values are `Person`, `TaxUnit`, `Household`, `Family`" in prompt
+        assert (
+            "Allowed `entity:` values are `Payment`, `Person`, `TaxUnit`, `Household`, "
+            "`Family`, `TanfUnit`, `SnapUnit`, `SPMUnit`, `Corporation`, `Business`, "
+            "`Asset`."
+        ) in prompt
         assert "Allowed `period:` values are `Year`, `Month`, `Week`, `Day`." in prompt
         assert (
             "Allowed `dtype:` values are `Money`, `Rate`, `Boolean`, `Integer`, "
