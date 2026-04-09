@@ -665,7 +665,9 @@ example_timing_rule:
         assert "individual payment or `that payment`" in prompt
         assert "preserve that payment-scoped subject" in prompt
         assert "prefer `entity: Payment`" in prompt
+        assert "prefer `entity: Asset`" in prompt
         assert "provide per-payment rows under `tables:`" in prompt
+        assert "provide per-item rows under `tables:`" in prompt
         assert "exact entity name `Payment:`" in prompt
         assert "Use `status: entity_not_supported`" in prompt
         assert "only as a last resort" in prompt
@@ -2669,7 +2671,7 @@ class TestEvalPrompt:
         assert "model a local override/displacement boolean" in prompt
         assert "Do not encode those `Subject to ...` qualifiers as helper names like `*_permits_*`" in prompt
 
-    def test_build_eval_prompt_for_pure_cross_reference_computation_prefers_deferred_without_import(
+    def test_build_eval_prompt_for_pure_cross_reference_computation_preserves_distinct_cited_alternatives(
         self, tmp_path
     ):
         workspace = prepare_eval_workspace(
@@ -2699,8 +2701,11 @@ class TestEvalPrompt:
         )
 
         assert "do not replace the cited computation with local boolean `*_route_is_satisfied` or `*_fact` placeholders" in prompt
-        assert "prefer a compileable top-level `status: deferred` fallback" in prompt
-        assert "leave the `.rac.test` file empty" in prompt
+        assert "do not emit a top-level `status: deferred` stub" in prompt
+        assert "do not collapse those cited alternatives into one generic treatment gate" in prompt
+        assert "preserve the distinct cited alternatives with paragraph-specific imports or local facts/amounts" in prompt
+        assert "do not invent an extra `no treatment applies` branch" in prompt
+        assert "include separate cases for the distinct cited alternatives" in prompt
 
     def test_build_eval_prompt_requires_calendar_date_test_periods(
         self, tmp_path
