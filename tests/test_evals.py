@@ -569,6 +569,8 @@ example_timing_rule:
         assert "do not invent `1`-valued threshold/count helpers" in prompt
         assert "branch-specific output is a `Count` or other non-Boolean basis selector" in prompt
         assert "do not write an inline conditional without `else`" in prompt
+        assert "negative tests should usually assert only the `_applies` boolean" in prompt
+        assert "expect the principal basis-count output to remain the active legal basis" in prompt
         assert "trigger decomposed-date CI failures" in prompt
 
     def test_build_eval_prompt_for_single_payment_period_discourages_parallel_units(
