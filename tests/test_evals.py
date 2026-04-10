@@ -2610,8 +2610,41 @@ class TestEvalPrompt:
         assert "qualifies its averaging basis with operative parenthetical text" in prompt
         assert "includes periods in which the claimant does no work but disregards other absences" in prompt
         assert "generic `average_weekly_income_*` input" in prompt
+        assert "`such other payments as may ... enable the claimant's average weekly income to be determined more accurately`" in prompt
+        assert "do not leave the branch money output unconditionally equal to the input average" in prompt
         assert "do not reuse the parent provision's generic final-amount phrase" in prompt
         assert "name the principal money or rate output after this limb's own basis or method" in prompt
+
+    def test_build_eval_prompt_for_purpose_limited_deeming_discourages_unsupported_fallback(
+        self, tmp_path
+    ):
+        workspace = prepare_eval_workspace(
+            citation="uksi/2002/1792/regulation/17/9A",
+            runner=parse_runner_spec("openai:gpt-5.4"),
+            output_root=tmp_path / "out",
+            source_text=(
+                "For the purposes of paragraph (9)(b), and for that purpose only, "
+                "the amounts specified in paragraph (5) shall be treated as though "
+                "they were earnings."
+            ),
+            rac_path=tmp_path / "rac",
+            mode="cold",
+            extra_context_paths=[],
+        )
+
+        prompt = _build_eval_prompt(
+            "uksi/2002/1792/regulation/17/9A",
+            "cold",
+            workspace,
+            [],
+            target_file_name="uksi-2002-1792-regulation-17-9A.rac",
+            include_tests=True,
+            runner_backend="openai",
+        )
+
+        assert "purpose-limited deeming clauses" in prompt
+        assert "do not use `status: entity_not_supported`" in prompt
+        assert "paragraph-(5) amounts treated as earnings for paragraph-(9)(b) only" in prompt
 
     def test_build_eval_prompt_for_uk_residual_determination_limb_requires_other_case_condition(
         self, tmp_path
@@ -2839,6 +2872,10 @@ class TestEvalPrompt:
         assert "do not collapse those cited alternatives into one generic treatment gate" in prompt
         assert "preserve the distinct cited alternatives with paragraph-specific imports or local facts/amounts" in prompt
         assert "do not invent an extra `no treatment applies` branch" in prompt
+        assert "do not make the cited route-selection flags part of whether the paragraph itself applies" in prompt
+        assert "self-employed earnings trigger the paragraph" in prompt
+        assert "regulation 13 paragraph (4) or paragraph (10) chooses the accounting route" in prompt
+        assert "avoid a false case that makes a self-employed-earner branch fail merely because neither local route flag was selected" in prompt
         assert "include separate cases for the distinct cited alternatives" in prompt
 
     def test_build_eval_prompt_requires_calendar_date_test_periods(

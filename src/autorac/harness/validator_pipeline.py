@@ -2058,12 +2058,18 @@ Output ONLY valid JSON:
 """
 
         try:
+            reviewer_timeout = int(os.getenv("AUTORAC_REVIEWER_TIMEOUT_SECONDS", "300"))
             output, returncode = run_claude_code(
                 prompt,
                 model=REVIEWER_CLI_MODEL,
-                timeout=120,
+                timeout=reviewer_timeout,
                 cwd=self.rac_us_path,
             )
+            if returncode != 0:
+                output_excerpt = output.strip()[:500] or "no output"
+                raise RuntimeError(
+                    f"Reviewer CLI exited {returncode}: {output_excerpt}"
+                )
 
             # Parse JSON from output
             data = _extract_json_object(output)

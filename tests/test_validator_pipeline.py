@@ -2258,6 +2258,34 @@ assessed_income_period_10_2_a_satisfied:
             assert result.passed is True
             assert result.issues == ["[non-blocking] possible import"]
 
+    def test_reviewer_uses_longer_configurable_timeout(
+        self, pipeline, temp_rac_file, monkeypatch
+    ):
+        monkeypatch.delenv("AUTORAC_REVIEWER_TIMEOUT_SECONDS", raising=False)
+        with patch("autorac.harness.validator_pipeline.run_claude_code") as mock_claude:
+            mock_claude.return_value = (
+                '{"score": 7.0, "passed": true, "issues": [], "reasoning": "ok"}',
+                0,
+            )
+
+            pipeline._run_reviewer("rac-reviewer", temp_rac_file)
+
+        assert mock_claude.call_args.kwargs["timeout"] == 300
+
+    def test_reviewer_reports_cli_failure_before_json_parse(
+        self, pipeline, temp_rac_file
+    ):
+        with patch("autorac.harness.validator_pipeline.run_claude_code") as mock_claude:
+            mock_claude.return_value = ("Timeout after 120s", 1)
+
+            result = pipeline._run_reviewer("rac-reviewer", temp_rac_file)
+
+        assert result.passed is False
+        assert result.error == "Reviewer CLI exited 1: Timeout after 120s"
+        assert result.issues == [
+            "Reviewer error: Reviewer CLI exited 1: Timeout after 120s"
+        ]
+
     def test_reviewer_unknown_type(self, pipeline, temp_rac_file):
         """Unknown reviewer type uses 'overall quality' focus."""
         with patch("autorac.harness.validator_pipeline.run_claude_code") as mock_claude:
