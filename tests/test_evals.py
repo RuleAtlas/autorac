@@ -2873,6 +2873,13 @@ class TestEvalPrompt:
         assert "preserve the distinct cited alternatives with paragraph-specific imports or local facts/amounts" in prompt
         assert "do not invent an extra `no treatment applies` branch" in prompt
         assert "do not make the cited route-selection flags part of whether the paragraph itself applies" in prompt
+        assert "do not encode the consequence as an unqualified `if paragraph_4_route: paragraph_4_amount else: paragraph_10_amount`" in prompt
+        assert "Paragraph (10) must be selected by a paragraph-(10) route fact/import or by a derived paragraph-(10) route helper" in prompt
+        assert "prefer a single mutually exclusive route selector" in prompt
+        assert "Do not expose two independent route booleans that allow both routes or neither route to be selected" in prompt
+        assert "a safe local-placeholder shape is" in prompt
+        assert "paragraph-(10) route is derived as the applicable paragraph with not paragraph-(4) route" in prompt
+        assert "Do not create an invalid-route output branch that returns `0`" in prompt
         assert "self-employed earnings trigger the paragraph" in prompt
         assert "regulation 13 paragraph (4) or paragraph (10) chooses the accounting route" in prompt
         assert "avoid a false case that makes a self-employed-earner branch fail merely because neither local route flag was selected" in prompt
