@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import contextlib
 import json
 import os
 import re
@@ -1911,13 +1912,7 @@ def prepare_eval_workspace(
         expanded_context = _expand_context_files(selected, rac_us_root, target_rel)
 
         for source_path, kind in expanded_context:
-            try:
-                if source_path.is_relative_to(rac_us_root):
-                    relative_target = source_path.relative_to(rac_us_root)
-                else:
-                    relative_target = Path("external") / source_path.name
-            except ValueError:
-                relative_target = Path("external") / source_path.name
+            relative_target = _context_import_relative_target(source_path, rac_path)
 
             workspace_relative_path = Path("context") / relative_target
             workspace_path = workspace_root / workspace_relative_path
@@ -2006,6 +2001,21 @@ def _auto_select_context_files(citation: str, rac_us_root: Path) -> list[Path]:
         return select_context_files(citation, rac_us_root)
     except Exception:
         return []
+
+
+def _context_import_relative_target(source_path: Path, rac_path: Path) -> Path:
+    """Prefer canonical repo-relative import targets for copied precedent files."""
+    repo_parent = rac_path.parent.resolve()
+    resolved_source = source_path.resolve()
+
+    for candidate in sorted(repo_parent.glob("rac*")):
+        if not candidate.is_dir():
+            continue
+        resolved_candidate = candidate.resolve()
+        with contextlib.suppress(ValueError):
+            return resolved_source.relative_to(resolved_candidate)
+
+    return Path("external") / resolved_source.name
 
 
 def _target_rel_for_eval_identifier(citation: str) -> Path | None:

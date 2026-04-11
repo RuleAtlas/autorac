@@ -4683,7 +4683,7 @@ class TestRepoAugmentedContext:
         copied = workspace.root / manifest["context_files"][0]["workspace_path"]
         assert copied.exists()
 
-    def test_build_eval_prompt_lists_external_context_import_target(self, tmp_path):
+    def test_build_eval_prompt_lists_canonical_context_import_target(self, tmp_path):
         repo_root = tmp_path / "repos"
         rac_root = repo_root / "rac"
         rac_root.mkdir(parents=True)
@@ -4716,7 +4716,10 @@ class TestRepoAugmentedContext:
             target_file_name="9-CCR-2503-6-3.606.1-I.rac",
         )
 
-        assert "inspect `context/external/F.rac`; import target `external/F.rac`" in prompt
+        assert (
+            "inspect `context/regulation/9-CCR-2503-6/3.606.1/F.rac`; "
+            "import target `regulation/9-CCR-2503-6/3.606.1/F.rac`"
+        ) in prompt
         assert "use the listed import target rather than the `./context/...` inspection path" in prompt
         assert "do not guess contradictory `.rac.test` expectations for those imported values" in prompt
         assert "keep `.rac.test` inputs and expected outputs consistent with the rows visible in that imported file" in prompt
@@ -4748,7 +4751,7 @@ class TestRepoAugmentedContext:
         eval_root = tmp_path / "eval-root"
         _hydrate_eval_root(eval_root, workspace)
 
-        assert (eval_root / "26" / "24" / "c.rac").read_text() == "status: stub\n"
+        assert (eval_root / "statute" / "26" / "24" / "c.rac").read_text() == "status: stub\n"
 
     def test_prepare_eval_workspace_expands_transitive_context_imports(self, tmp_path):
         repo_root = tmp_path / "repos"
