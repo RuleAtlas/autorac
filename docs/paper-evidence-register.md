@@ -59,6 +59,12 @@ This file is the claim register for future writing. It separates claims that are
 - There is now a named 33-case UK PolicyEngine readiness lane.
   - Evidence:
     - [uk_policyengine_readiness.yaml](../benchmarks/uk_policyengine_readiness.yaml)
+- The Colorado Works leaf repair manifest reached a clean ready state on 2026-04-11.
+  - Correct scope:
+    - This is evidence for the five-case Colorado repair lane, not for Colorado program completeness more broadly.
+  - Evidence:
+    - [us_co_colorado_works_leaf_repair.yaml](../benchmarks/us_co_colorado_works_leaf_repair.yaml)
+    - [us-co-colorado-works-leaf-repair9-20260411](../artifacts/eval-suites/us-co-colorado-works-leaf-repair9-20260411)
 
 ## Claims To Avoid Or Qualify
 
@@ -71,9 +77,9 @@ This file is the claim register for future writing. It separates claims that are
 - Do not claim that Codex-default improved benchmark accuracy until the current Codex-backed rerun and repair cycle fully closes.
   - Correct framing:
     - Codex is now the local default backend for GPT evals because it reduces cost and simplifies local runs.
-- Do not claim that the Colorado Works leaf repair lane is fully closed yet.
+- Do not claim that Colorado Works as a whole is benchmark-closed.
   - Correct framing:
-    - The harness now records a documented sequence of Colorado import-path and prompt repairs, but a clean full rerun on the latest harness state is still pending the next post-quota Codex run.
+    - The five-case leaf repair manifest is now clean, but that does not by itself establish broader Colorado program coverage or stability outside that lane.
 - Do not claim that Atlas already has a finished program-level match/mismatch dashboard.
   - Correct framing:
     - We have durable run artifacts and per-rule detail panes, but not yet a full aggregate dashboard of program-level agreement.

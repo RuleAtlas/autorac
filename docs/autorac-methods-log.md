@@ -229,6 +229,22 @@ As of 2026-04-10:
   - [us-co-colorado-works-leaf-repair3-interrupted-20260411](../artifacts/eval-suites/us-co-colorado-works-leaf-repair3-interrupted-20260411)
   - [us-co-colorado-works-leaf-repair4-usage-limit-20260411](../artifacts/eval-suites/us-co-colorado-works-leaf-repair4-usage-limit-20260411)
 
+### 2026-04-11: Colorado leaf repair lane closed cleanly after CI import-closure fix
+
+- Primary commit:
+  - `342a68a` `Run CI tests with import closure`
+- Hypothesis:
+  - A meaningful share of the remaining Colorado repair failures were harness artifacts from running `rac.test_runner` against the benchmark output file without the copied import closure that `rac.validate all` already saw.
+- Effect:
+  - CI test execution now copies the root benchmark artifact, its companion `.rac.test`, and its resolved import closure into a flattened temporary workspace before invoking `rac.test_runner`.
+  - The Colorado leaf repair rerun moved from mixed CI failures to a clean readiness pass on the full five-case repair manifest.
+- Primary evidence paths:
+  - [validator_pipeline.py](../src/autorac/harness/validator_pipeline.py)
+  - [test_validator_pipeline.py](../tests/test_validator_pipeline.py)
+  - [us_co_colorado_works_leaf_repair.yaml](../benchmarks/us_co_colorado_works_leaf_repair.yaml)
+  - [us-co-colorado-works-leaf-repair8-interrupted-20260411](../artifacts/eval-suites/us-co-colorado-works-leaf-repair8-interrupted-20260411)
+  - [us-co-colorado-works-leaf-repair9-20260411](../artifacts/eval-suites/us-co-colorado-works-leaf-repair9-20260411)
+
 ## Open Documentation Debt
 
 - Add before/after metric snapshots for every kept harness change rather than relying on commit messages.
