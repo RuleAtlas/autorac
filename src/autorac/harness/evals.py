@@ -2610,6 +2610,7 @@ Rules:
 - If `./source.txt` uses a legal concept for which a copied canonical concept file is provided above, import or re-export that exact canonical concept instead of duplicating it locally.
 - For resolved definition files listed above, the required syntax is an `imports:` block that references the exact `path#symbol` target.
 - For copied canonical concept files listed above, the required syntax is an `imports:` block that references the exact `path#symbol` target.
+- In any `imports:` block, emit bare import targets like `- regulation/9-CCR-2503-6/3.606.1/F#need_standard_for_assistance_unit`; do not wrap import targets in quotes.
 - Do not replace a resolved canonical import with a local deferred symbol whose name is just a mangled version of the import target.
 - If that cited upstream file is absent from this workspace, still emit the unresolved import path; the external-stub workflow is expected to fill it in later.
 - If the source text only implies a shared concept, import an existing canonical concept only when one is actually present in the workspace; otherwise keep the helper local to this leaf.

@@ -4720,6 +4720,7 @@ class TestRepoAugmentedContext:
             "inspect `context/regulation/9-CCR-2503-6/3.606.1/F.rac`; "
             "import target `regulation/9-CCR-2503-6/3.606.1/F.rac`"
         ) in prompt
+        assert "do not wrap import targets in quotes" in prompt
         assert "use the listed import target rather than the `./context/...` inspection path" in prompt
         assert "do not guess contradictory `.rac.test` expectations for those imported values" in prompt
         assert "keep `.rac.test` inputs and expected outputs consistent with the rows visible in that imported file" in prompt
