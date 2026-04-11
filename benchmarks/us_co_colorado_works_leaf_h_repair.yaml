@@ -1,0 +1,19 @@
+name: Colorado Works leaf H repair
+runners:
+  - openai:gpt-5.4
+mode: repo-augmented
+gates:
+  min_cases: 1
+  min_success_rate: 1.0
+  min_compile_pass_rate: 1.0
+  min_ci_pass_rate: 1.0
+  min_zero_ungrounded_rate: 1.0
+  min_generalist_review_pass_rate: 1.0
+  max_mean_estimated_cost_usd: 0.5
+cases:
+  - kind: source
+    name: co-3-606-1-h
+    source_id: 9 CCR 2503-6 3.606.1(H)
+    source_file: ../../rac-us-co/sources/slices/9-CCR-2503-6/3.606.1/H.txt
+    allow_context:
+      - ../../rac-us-co/regulation/9-CCR-2503-6/3.606.1/F.rac

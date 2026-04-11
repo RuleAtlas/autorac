@@ -3420,6 +3420,8 @@ is_individual_responsibility_contract:
         assert "Do not replace that import with a local deferred stub" in prompt
         assert "Do not encode such local factual predicates as placeholder constants like `true` or `false`." in prompt
         assert "Do not encode such local factual predicates as `status: deferred`" in prompt
+        assert "preserve that post-adjustment quantity directly as an input/helper" in prompt
+        assert "prefer an input like `countable_gross_earned_income_after_disregards` over raw `gross_earned_income`" in prompt
         assert "do not collapse the principal output to an unconditional `true` or `false`" in prompt
 
     def test_build_eval_prompt_includes_resolved_canonical_concept_guidance(
@@ -4690,6 +4692,35 @@ cases:
                 / "3.606.1"
                 / "I.rac"
             ).resolve(),
+        ]
+
+    def test_repo_us_co_colorado_works_leaf_h_repair_manifest_loads_expected_case(self):
+        repo_root = Path(__file__).resolve().parents[1]
+        manifest = load_eval_suite_manifest(
+            repo_root / "benchmarks" / "us_co_colorado_works_leaf_h_repair.yaml"
+        )
+
+        assert manifest.name == "Colorado Works leaf H repair"
+        assert manifest.mode == "repo-augmented"
+        assert len(manifest.cases) == 1
+        assert manifest.gates.min_cases == 1
+        assert manifest.gates.min_success_rate == 1.0
+        assert manifest.gates.min_compile_pass_rate == 1.0
+        assert manifest.gates.min_ci_pass_rate == 1.0
+        assert manifest.gates.min_zero_ungrounded_rate == 1.0
+        assert manifest.gates.min_generalist_review_pass_rate == 1.0
+        assert manifest.gates.max_mean_estimated_cost_usd == 0.5
+        assert manifest.cases[0].name == "co-3-606-1-h"
+        assert manifest.cases[0].source_id == "9 CCR 2503-6 3.606.1(H)"
+        assert manifest.cases[0].allow_context == [
+            (
+                repo_root.parent
+                / "rac-us-co"
+                / "regulation"
+                / "9-CCR-2503-6"
+                / "3.606.1"
+                / "F.rac"
+            ).resolve()
         ]
 
 
