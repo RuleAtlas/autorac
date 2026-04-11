@@ -458,6 +458,60 @@ need_standard_for_assistance_unit:
         assert (destination_root / "source" / "example.rac").exists()
         assert (destination_root / "external" / "F.rac").exists()
 
+    def test_copy_validation_import_closure_can_flatten_root_and_copy_companion_test(
+        self, pipeline, tmp_path
+    ):
+        runner_root = tmp_path / "case" / "codex-gpt-5.4"
+        source_dir = runner_root / "source"
+        external_dir = runner_root / "external"
+        source_dir.mkdir(parents=True)
+        external_dir.mkdir()
+
+        rac_file = source_dir / "example.rac"
+        rac_file.write_text(
+            """
+imports:
+    - external/F.rac#grant_standard_for_assistance_unit
+
+example_output:
+    entity: TanfUnit
+    period: Month
+    dtype: Money
+    from 2026-04-02:
+        grant_standard_for_assistance_unit
+"""
+        )
+        rac_file.with_suffix(".rac.test").write_text(
+            """
+- name: base
+  period: 2026-04-02
+  output:
+    example_output: 1
+"""
+        )
+        (external_dir / "F.rac").write_text(
+            """
+grant_standard_for_assistance_unit:
+    entity: TanfUnit
+    period: Month
+    dtype: Money
+    from 2026-04-02:
+        1
+"""
+        )
+
+        destination_root = tmp_path / "validation-tree"
+        pipeline._copy_validation_import_closure(
+            rac_file,
+            destination_root,
+            root_destination_relative=Path("example.rac"),
+            include_root_companion_test=True,
+        )
+
+        assert (destination_root / "example.rac").exists()
+        assert (destination_root / "example.rac.test").exists()
+        assert (destination_root / "external" / "F.rac").exists()
+
 
 class TestExtractNamedScalarOccurrences:
     def test_extracts_direct_and_multiline_temporal_scalars(self):
@@ -1943,6 +1997,80 @@ income_is_considered_for_eligibility:
             result = pipeline._run_ci(rac_file)
 
         assert not any("Canonical concept import missing" in issue for issue in result.issues)
+
+    def test_ci_runs_test_runner_from_flattened_import_workspace(self, pipeline, tmp_path):
+        runner_root = tmp_path / "case" / "codex-gpt-5.4"
+        source_dir = runner_root / "source"
+        external_dir = runner_root / "external"
+        source_dir.mkdir(parents=True)
+        external_dir.mkdir()
+
+        rac_file = source_dir / "example.rac"
+        rac_file.write_text(
+            '''
+"""
+Example benchmark artifact.
+"""
+
+imports:
+    - external/F.rac#grant_standard_for_assistance_unit
+
+example_output:
+    entity: TanfUnit
+    period: Month
+    dtype: Money
+    from 2026-04-02:
+        grant_standard_for_assistance_unit
+'''
+        )
+        rac_file.with_suffix(".rac.test").write_text(
+            """
+- name: base
+  period: 2026-04-02
+  output:
+    example_output: 1
+"""
+        )
+        (external_dir / "F.rac").write_text(
+            """
+grant_standard_for_assistance_unit:
+    entity: TanfUnit
+    period: Month
+    dtype: Money
+    from 2026-04-02:
+        1
+"""
+        )
+
+        def fake_run(cmd, capture_output, text, timeout, env, cwd=None):
+            if cmd[2] == "rac.test_runner":
+                target = Path(cmd[3])
+                assert target != rac_file
+                assert target.name == "example.rac"
+                assert target.exists()
+                assert target.with_suffix(".rac.test").exists()
+                assert (target.parent / "external" / "F.rac").exists()
+                assert cwd == str(target.parent)
+                return Mock(
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
+                    stderr="",
+                    returncode=0,
+                )
+            if cmd[2] == "rac.validate":
+                validation_root = Path(cmd[4])
+                assert (validation_root / "source" / "example.rac").exists()
+                assert (validation_root / "external" / "F.rac").exists()
+                return Mock(
+                    stdout="Checked 1 .rac files\n\nAll files pass validation\n",
+                    stderr="",
+                    returncode=0,
+                )
+            raise AssertionError(f"Unexpected subprocess command: {cmd}")
+
+        with patch("autorac.harness.validator_pipeline.subprocess.run", side_effect=fake_run):
+            result = pipeline._run_ci(rac_file)
+
+        assert result.passed is True
 
     def test_ci_rejects_constant_placeholder_fact_variables(self, pipeline):
         """CI should reject source-derived fact variables encoded as constant booleans."""

@@ -1101,13 +1101,24 @@ class ValidatorPipeline:
 
         # 1. Run companion .rac.test cases through the current test-runner CLI.
         try:
-            result = subprocess.run(
-                [sys.executable, "-m", "rac.test_runner", str(rac_file)],
-                capture_output=True,
-                text=True,
-                timeout=60,
-                env=env,
-            )
+            with tempfile.TemporaryDirectory() as tmpdir:
+                temp_root = Path(tmpdir)
+                temp_rac_file = temp_root / rac_file.name
+                self._copy_validation_import_closure(
+                    rac_file=rac_file,
+                    destination_root=temp_root,
+                    root_destination_relative=Path(rac_file.name),
+                    include_root_companion_test=True,
+                )
+
+                result = subprocess.run(
+                    [sys.executable, "-m", "rac.test_runner", str(temp_rac_file)],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    env=env,
+                    cwd=tmpdir,
+                )
             if "No tests found." in result.stdout:
                 if not self._is_nonassertable_status_only_artifact(rac_file):
                     issues.append("Test runner failed: No tests found.")
@@ -1250,10 +1261,13 @@ class ValidatorPipeline:
         self,
         rac_file: Path,
         destination_root: Path,
+        root_destination_relative: Path | None = None,
+        include_root_companion_test: bool = False,
     ) -> None:
         """Copy a RAC file and its imported dependencies into a temp validation tree."""
         source_root = self._validation_source_root(rac_file)
-        pending = [rac_file.resolve()]
+        root_resolved = rac_file.resolve()
+        pending = [root_resolved]
         copied: set[Path] = set()
 
         while pending:
@@ -1263,10 +1277,20 @@ class ValidatorPipeline:
                 continue
             copied.add(resolved)
 
-            relative = current.relative_to(source_root)
+            if resolved == root_resolved and root_destination_relative is not None:
+                relative = root_destination_relative
+            else:
+                relative = current.relative_to(source_root)
             target = destination_root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(current, target)
+
+            if include_root_companion_test and resolved == root_resolved:
+                companion_test = current.with_suffix(".rac.test")
+                if companion_test.exists():
+                    companion_target = target.with_suffix(".rac.test")
+                    companion_target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(companion_test, companion_target)
 
             for dependency in self._resolve_import_dependencies(current, source_root):
                 if dependency.resolve() not in copied:
