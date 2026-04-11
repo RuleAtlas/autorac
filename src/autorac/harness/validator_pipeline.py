@@ -311,6 +311,9 @@ GROUNDING_METADATA_KEYS = {
 }
 
 IMPORT_ITEM_PATTERN = re.compile(r"^\s*-\s*(['\"]?)([^'\"]+?)\1\s*$")
+IMPORT_MAPPING_PATTERN = re.compile(
+    r"^\s*[A-Za-z_]\w*:\s*(['\"]?)([^'\"]+?)\1\s*$"
+)
 _EMBEDDED_SCALAR_BLOCK_HEADER = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s*:\s*$")
 _EMBEDDED_SCALAR_TEMPORAL_LINE = re.compile(
     r"^(\s*)from\s+\d{4}-\d{2}-\d{2}:\s*(.*?)\s*$"
@@ -1271,6 +1274,13 @@ class ValidatorPipeline:
         with contextlib.suppress(ValueError):
             resolved_file.relative_to(resolved_root)
             return resolved_root
+        if resolved_file.parent.name == "source":
+            runner_root = resolved_file.parent.parent
+            if any(
+                (runner_root / sibling).exists()
+                for sibling in ("external", "legislation", "regulation", "statute")
+            ):
+                return runner_root
         return resolved_file.parent
 
     def _resolve_import_dependencies(
@@ -1311,10 +1321,13 @@ class ValidatorPipeline:
                 continue
 
             item_match = IMPORT_ITEM_PATTERN.match(line)
-            if not item_match:
-                continue
-
-            item = item_match.group(2).strip()
+            if item_match:
+                item = item_match.group(2).strip()
+            else:
+                mapping_match = IMPORT_MAPPING_PATTERN.match(line)
+                if not mapping_match:
+                    continue
+                item = mapping_match.group(2).strip()
             import_target = item.split("#", 1)[0].strip()
             if import_target:
                 paths.append(import_target)

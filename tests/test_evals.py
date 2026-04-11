@@ -2645,6 +2645,8 @@ class TestEvalPrompt:
         assert "do not use an unconditional amount or `else: true`" in prompt
         assert "fixed supplement, allowance, or addition is payable only while an eligibility condition holds" in prompt
         assert "do not leave that money output unconditional" in prompt
+        assert "do not collapse those facts into an opaque local input like `*_eligible_for_*`" in prompt
+        assert "prefer direct facts like `client_is_pregnant_parent`" in prompt
 
     def test_build_eval_prompt_for_determination_limb_discourages_invented_fallback(
         self, tmp_path
@@ -4678,6 +4680,8 @@ class TestRepoAugmentedContext:
 
         assert "inspect `context/external/F.rac`; import target `external/F.rac`" in prompt
         assert "use the listed import target rather than the `./context/...` inspection path" in prompt
+        assert "do not guess contradictory `.rac.test` expectations for those imported values" in prompt
+        assert "keep `.rac.test` inputs and expected outputs consistent with the rows visible in that imported file" in prompt
 
     def test_hydrate_eval_root_copies_context_into_import_tree(self, tmp_path):
         repo_root = tmp_path / "repos"

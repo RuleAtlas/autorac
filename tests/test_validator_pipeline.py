@@ -375,6 +375,76 @@ To calculate the basic cash assistance amount for an eligible assistance unit:
         assert 11.0 not in occurrences
 
 
+class TestImportClosureHelpers:
+    def test_extract_import_paths_supports_list_and_mapping_forms(self, pipeline):
+        content = """
+imports:
+    - external/F.rac#grant_standard_for_assistance_unit
+    need_standard_for_assistance_unit: external/F.rac#need_standard_for_assistance_unit
+"""
+
+        assert pipeline._extract_import_paths(content) == [
+            "external/F.rac",
+            "external/F.rac",
+        ]
+
+    def test_validation_source_root_uses_runner_root_for_benchmark_outputs(
+        self, pipeline, tmp_path
+    ):
+        runner_root = tmp_path / "case" / "codex-gpt-5.4"
+        source_dir = runner_root / "source"
+        source_dir.mkdir(parents=True)
+        (runner_root / "external").mkdir()
+        rac_file = source_dir / "example.rac"
+        rac_file.write_text("status: encoded\n")
+
+        assert pipeline._validation_source_root(rac_file) == runner_root
+
+    def test_copy_validation_import_closure_copies_external_dependencies_from_runner_root(
+        self, pipeline, tmp_path
+    ):
+        runner_root = tmp_path / "case" / "codex-gpt-5.4"
+        source_dir = runner_root / "source"
+        external_dir = runner_root / "external"
+        source_dir.mkdir(parents=True)
+        external_dir.mkdir()
+
+        rac_file = source_dir / "example.rac"
+        rac_file.write_text(
+            """
+imports:
+    - external/F.rac#grant_standard_for_assistance_unit
+    need_standard_for_assistance_unit: external/F.rac#need_standard_for_assistance_unit
+
+example_output:
+    entity: TanfUnit
+    period: Month
+    dtype: Money
+    from 2026-04-02:
+        grant_standard_for_assistance_unit
+"""
+        )
+        (external_dir / "F.rac").write_text(
+            """
+grant_standard_for_assistance_unit:
+    entity: TanfUnit
+    period: Month
+    dtype: Money
+
+need_standard_for_assistance_unit:
+    entity: TanfUnit
+    period: Month
+    dtype: Money
+"""
+        )
+
+        destination_root = tmp_path / "validation-tree"
+        pipeline._copy_validation_import_closure(rac_file, destination_root)
+
+        assert (destination_root / "source" / "example.rac").exists()
+        assert (destination_root / "external" / "F.rac").exists()
+
+
 class TestExtractNamedScalarOccurrences:
     def test_extracts_direct_and_multiline_temporal_scalars(self):
         occurrences = extract_named_scalar_occurrences(

@@ -2609,7 +2609,11 @@ Rules:
 - Do not encode such local factual predicates as placeholder constants like `true` or `false`.
 - Do not encode such local factual predicates as `status: deferred`; if they are not imported, leave them as plain input stubs instead.
 - If `./source.txt` states that a fixed supplement, allowance, or addition is payable only while an eligibility condition holds, do not leave that money output unconditional; make the amount depend on that eligibility condition, usually with `else: 0` when the source states no alternate amount.
+- If `./source.txt` itself states the concrete facts that make someone eligible, do not collapse those facts into an opaque local input like `*_eligible_for_*` or `*_qualifies_for_*`. Expose the source-stated facts directly and derive eligibility from them only if needed.
+- For example, if the source says `pregnant parents are eligible ... through the month in which the pregnancy ends`, prefer direct facts like `client_is_pregnant_parent` and a month-end boundary fact/helper over a black-box `person_is_eligible_for_pregnancy_allowance`.
 - For textual rounding instructions like `drop the cents`, `drop any cents`, `round down`, or `truncate`, use supported RAC helpers like `floor(...)` rather than unsupported operators such as `%`.
+- When a copied precedent file supplies chart values, thresholds, or standard amounts that your artifact imports, do not guess contradictory `.rac.test` expectations for those imported values. Choose test rows that match explicit imported chart values, or assert only relationships that do not require guessing the imported amount.
+- If you import variables like `need_standard_for_assistance_unit` or `grant_standard_for_assistance_unit` from a copied chart/standard file, keep `.rac.test` inputs and expected outputs consistent with the rows visible in that imported file rather than inventing zero or placeholder standards.
 - Wrong:
   some_paragraph_applies:
       entity: Person
