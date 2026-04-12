@@ -4326,6 +4326,21 @@ class TestGetPeVariableMap:
         assert "'child_support_expense': {'2022': 36.0}" in script
         assert "'state_code_str': {'2022': 'TX'}" in script
 
+    def test_build_pe_us_script_maps_snap_excess_medical_inputs(self, pipeline):
+        script = pipeline._build_pe_us_scenario_script(
+            "snap_excess_medical_expense_deduction",
+            {
+                "period": "2022-01-01",
+                "snap_household_has_elderly_or_disabled_member": True,
+                "snap_allowable_medical_expenses_before_threshold": 40,
+            },
+            "2022",
+        )
+
+        assert "'is_usda_disabled': {'2022': True}" in script
+        assert "'medical_out_of_pocket_expenses': {'2022': 480.0}" in script
+        assert "'state_code_str': {'2022': 'NY'}" in script
+
 
 # =========================================================================
 # _build_pe_scenario_script

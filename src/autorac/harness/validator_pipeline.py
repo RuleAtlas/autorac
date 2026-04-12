@@ -4280,6 +4280,21 @@ print("BENCHMARK:" + json.dumps(result))
                     f"'child_support_expense': {{'{year}': {annual_child_support}}}"
                 )
 
+        if "snap_household_has_elderly_or_disabled_member" in inputs:
+            adult_attrs.append(
+                "'is_usda_disabled': "
+                f"{{'{year}': {bool(inputs['snap_household_has_elderly_or_disabled_member'])}}}"
+            )
+
+        medical_expenses = inputs.get("snap_allowable_medical_expenses_before_threshold")
+        if medical_expenses is not None:
+            with contextlib.suppress(TypeError, ValueError):
+                annual_medical_expenses = float(medical_expenses) * 12
+                adult_attrs.append(
+                    "'medical_out_of_pocket_expenses': "
+                    f"{{'{year}': {annual_medical_expenses}}}"
+                )
+
         people_parts = [f"'adult': {{{', '.join(adult_attrs)}}}"]
 
         # Add spouse if joint
@@ -4319,7 +4334,24 @@ print("BENCHMARK:" + json.dumps(result))
         if override_parts:
             spm_extra = ", " + ", ".join(override_parts)
 
-        household_extra_parts = [f"'state_name': {{'{year}': 'CA'}}"]
+        household_state = "CA"
+        if pe_var == "snap_excess_medical_expense_deduction":
+            # Use a neutral state without a standard medical deduction option
+            # unless the case provides explicit state context.
+            household_state = "NY"
+        if "snap_state_uses_child_support_deduction" in inputs:
+            household_state = (
+                "TX" if bool(inputs["snap_state_uses_child_support_deduction"]) else "CA"
+            )
+        if "state_code_str" in inputs:
+            household_state = str(inputs["state_code_str"])
+        elif "state_name" in inputs:
+            household_state = str(inputs["state_name"])
+
+        household_extra_parts = [
+            f"'state_name': {{'{year}': {repr(household_state)}}}",
+            f"'state_code_str': {{'{year}': {repr(household_state)}}}",
+        ]
         if "state_group_str" in inputs:
             household_extra_parts.append(
                 f"'state_group_str': {{'{year}': {repr(inputs['state_group_str'])}}}"
@@ -4327,13 +4359,6 @@ print("BENCHMARK:" + json.dumps(result))
         elif "state_group" in inputs:
             household_extra_parts.append(
                 f"'state_group_str': {{'{year}': {repr(inputs['state_group'])}}}"
-            )
-        if "snap_state_uses_child_support_deduction" in inputs:
-            deduction_state = (
-                "TX" if bool(inputs["snap_state_uses_child_support_deduction"]) else "CA"
-            )
-            household_extra_parts.append(
-                f"'state_code_str': {{'{year}': {repr(deduction_state)}}}"
             )
         household_extra = ", ".join(household_extra_parts)
 
