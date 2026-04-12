@@ -5703,6 +5703,10 @@ class TestSourceEval:
         )
         assert "prefer the oracle's direct component facts over inverted household proxy inputs" in prompt
         assert (
+            "preserve that as a person-level fact instead of turning it into a whole-household bar"
+            in prompt
+        )
+        assert (
             "import that copied current-effective symbol rather than jumping past it to an older base-statute symbol"
             in prompt
         )
