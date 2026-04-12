@@ -259,6 +259,34 @@ grant_standard:
 
         assert [item[1] for item in values] == ["10", "1000", "10", "86", "2200"]
 
+    def test_ignores_named_half_up_rounding_helper_scalars(self):
+        content = '''
+"""
+Rounded to the nearest whole dollar increment.
+"""
+
+status: encoded
+
+rounding_half_increment:
+    entity: Household
+    period: Month
+    dtype: Decimal
+    from 2025-04-07:
+        0.5
+
+rounded_amount:
+    entity: Household
+    period: Month
+    dtype: Money
+    unit: USD
+    from 2025-04-07:
+        floor(base_amount + rounding_half_increment)
+'''
+
+        values = extract_grounding_values(content)
+
+        assert [item[1] for item in values] == []
+
     def test_handles_generic_exception(self):
         with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
             mock_run.side_effect = RuntimeError("unexpected error")

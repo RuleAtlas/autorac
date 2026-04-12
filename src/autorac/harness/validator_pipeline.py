@@ -737,7 +737,16 @@ def extract_grounding_values(content: str) -> list[tuple[int, str, float]]:
             continue
 
         if in_formula:
-            values.extend(_extract_formula_grounding_values(line_number, line))
+            formula_values = _extract_formula_grounding_values(line_number, line)
+            if current_symbol_name is not None:
+                formula_values = [
+                    item
+                    for item in formula_values
+                    if not _is_half_up_rounding_helper_scalar(
+                        current_symbol_name, item[2]
+                    )
+                ]
+            values.extend(formula_values)
             continue
 
         if re.match(r'\s*description:\s*"', line) or re.match(
@@ -755,6 +764,11 @@ def extract_grounding_values(content: str) -> list[tuple[int, str, float]]:
                 if (
                     current_symbol_name is not None
                     and _is_structural_schedule_index_helper(current_symbol_name, value)
+                ):
+                    continue
+                if (
+                    current_symbol_name is not None
+                    and _is_half_up_rounding_helper_scalar(current_symbol_name, value)
                 ):
                     continue
                 if value not in GROUNDING_ALLOWED_VALUES:
@@ -813,6 +827,18 @@ def _is_half_up_rounding_expression(expression: str) -> bool:
     compact = re.sub(r"\s+", "", expression)
     return _call_body_contains_any(compact, "floor", ("+0.5", "0.5+")) or (
         _call_body_contains_any(compact, "ceil", ("-0.5", "0.5-"))
+    )
+
+
+def _is_half_up_rounding_helper_scalar(symbol_name: str, value: float) -> bool:
+    """Return True when a named scalar only defines the standard half-up offset."""
+    if value != 0.5:
+        return False
+    normalized = symbol_name.lower()
+    if "half_increment" in normalized:
+        return True
+    return "half_up" in normalized and (
+        "rounding" in normalized or "offset" in normalized
     )
 
 
