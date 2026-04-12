@@ -100,6 +100,16 @@ This file is the claim register for future writing. It separates claims that are
     - [validator_pipeline.py](../src/autorac/harness/validator_pipeline.py)
     - [is_snap_eligible.txt](../../rac-us/sources/slices/7-USC/snap/current-effective/is_snap_eligible.txt)
     - [us-snap-eligibility-refresh6-ready-20260412](../artifacts/eval-suites/us-snap-eligibility-refresh6-ready-20260412)
+- Checked-in current-effective federal SNAP deduction benchmarks now replay cleanly without depending on copied `2014(e)` context files.
+  - Correct scope:
+    - This supports the specific `snap_earned_income_deduction` and `snap_net_income_pre_shelter` current-effective slices and the narrower harness claim that AutoRAC can benchmark these atomic deduction/intermediate outputs directly once duplicate benchmark context is removed and the oracle bridge accepts harmless intermediate-input synonyms. It does not establish that the full `2014(e)` deduction chain is benchmark-closed as a whole.
+  - Evidence:
+    - [us_snap_earned_income_deduction_refresh.yaml](../benchmarks/us_snap_earned_income_deduction_refresh.yaml)
+    - [us_snap_net_income_pre_shelter_refresh.yaml](../benchmarks/us_snap_net_income_pre_shelter_refresh.yaml)
+    - [validator_pipeline.py](../src/autorac/harness/validator_pipeline.py)
+    - [snap_net_income_pre_shelter.txt](../../rac-us/sources/slices/7-USC/snap/current-effective/snap_net_income_pre_shelter.txt)
+    - [us-snap-earned-income-deduction-refresh6-ready-20260412](../artifacts/eval-suites/us-snap-earned-income-deduction-refresh6-ready-20260412)
+    - [us-snap-net-income-pre-shelter-refresh11-ready-20260412](../artifacts/eval-suites/us-snap-net-income-pre-shelter-refresh11-ready-20260412)
 
 ## Claims To Avoid Or Qualify
 

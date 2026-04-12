@@ -348,6 +348,31 @@ As of 2026-04-10:
   - [us-snap-eligibility-refresh5-interrupted-20260412](../artifacts/eval-suites/us-snap-eligibility-refresh5-interrupted-20260412)
   - [us-snap-eligibility-refresh6-ready-20260412](../artifacts/eval-suites/us-snap-eligibility-refresh6-ready-20260412)
 
+### 2026-04-12: Checked-in SNAP deduction benchmarks stopped depending on duplicate-context imports
+
+- Primary commits:
+  - `12877e5` `Clarify SNAP pre-shelter source slice`
+  - `c7891e5` `Stabilize checked-in SNAP deduction benchmarks`
+- Hypothesis:
+  - The remaining failures on the checked-in `snap_earned_income_deduction` and `snap_net_income_pre_shelter` refresh manifests were not substantive disagreements on the target slices. They came from benchmark setup defects: copied context files that redefined the same variables as the generated slice, an under-specified pre-shelter source slice that invited the wrong target, and a PE replay bridge that treated harmless naming drift in the generated intermediate income input as an oracle mismatch.
+- Effect:
+  - The checked-in earned-income and pre-shelter manifests no longer allow the broader `2014(e)` context file, so the generated atomic slices compile in isolation instead of colliding with duplicated canonical declarations.
+  - The pre-shelter source slice now names the target variable directly and fixes the period framing to a monthly current-effective benchmark prompt.
+  - PE replay now accepts the observed family of generated synonyms for “monthly household income after all other applicable deductions,” so the oracle validates the intended intermediate quantity rather than defaulting it to zero.
+  - Both checked-in deduction benchmarks now reach a clean ready state with success, compile, CI, zero-ungrounded numerics, generalist review, and PolicyEngine all passing.
+- Primary evidence paths:
+  - [us_snap_earned_income_deduction_refresh.yaml](../benchmarks/us_snap_earned_income_deduction_refresh.yaml)
+  - [us_snap_net_income_pre_shelter_refresh.yaml](../benchmarks/us_snap_net_income_pre_shelter_refresh.yaml)
+  - [validator_pipeline.py](../src/autorac/harness/validator_pipeline.py)
+  - [test_evals.py](../tests/test_evals.py)
+  - [test_validator_pipeline.py](../tests/test_validator_pipeline.py)
+  - [snap_net_income_pre_shelter.txt](../../rac-us/sources/slices/7-USC/snap/current-effective/snap_net_income_pre_shelter.txt)
+  - [us-snap-earned-income-deduction-refresh5-failed-20260412](../artifacts/eval-suites/us-snap-earned-income-deduction-refresh5-failed-20260412)
+  - [us-snap-earned-income-deduction-refresh6-ready-20260412](../artifacts/eval-suites/us-snap-earned-income-deduction-refresh6-ready-20260412)
+  - [us-snap-net-income-pre-shelter-refresh8-failed-20260412](../artifacts/eval-suites/us-snap-net-income-pre-shelter-refresh8-failed-20260412)
+  - [us-snap-net-income-pre-shelter-refresh10-failed-20260412](../artifacts/eval-suites/us-snap-net-income-pre-shelter-refresh10-failed-20260412)
+  - [us-snap-net-income-pre-shelter-refresh11-ready-20260412](../artifacts/eval-suites/us-snap-net-income-pre-shelter-refresh11-ready-20260412)
+
 ## Open Documentation Debt
 
 - Add before/after metric snapshots for every kept harness change rather than relying on commit messages.
