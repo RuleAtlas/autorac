@@ -9,11 +9,14 @@ gates:
   min_ci_pass_rate: 1.0
   min_zero_ungrounded_rate: 1.0
   min_generalist_review_pass_rate: 1.0
+  min_policyengine_pass_rate: 1.0
 cases:
   - kind: source
     name: meets_snap_asset_test
     source_id: 7 USC 2014(g)(1)
     source_file: ../../rac-us/sources/slices/7-USC/2014/g/1.txt
+    allow_context:
+      - ../../rac-us/usda/snap/fy-2026-cola/2.rac
     oracle: policyengine
     policyengine_country: auto
     policyengine_rac_var_hint: meets_snap_asset_test

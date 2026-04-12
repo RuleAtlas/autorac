@@ -4993,6 +4993,7 @@ cases:
         assert manifest.gates.min_ci_pass_rate == 1.0
         assert manifest.gates.min_zero_ungrounded_rate == 1.0
         assert manifest.gates.min_generalist_review_pass_rate == 1.0
+        assert manifest.gates.min_policyengine_pass_rate == 1.0
         case = manifest.cases[0]
         assert case.kind == "source"
         assert case.name == "meets_snap_asset_test"
@@ -5007,6 +5008,16 @@ cases:
             / "g"
             / "1.txt"
         ).resolve()
+        assert case.allow_context == [
+            (
+                repo_root.parent
+                / "rac-us"
+                / "usda"
+                / "snap"
+                / "fy-2026-cola"
+                / "2.rac"
+            ).resolve()
+        ]
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert case.policyengine_rac_var_hint == "meets_snap_asset_test"
@@ -5572,6 +5583,11 @@ class TestSourceEval:
         )
 
         assert "uc_standard_allowance_single_claimant_aged_under_25" in prompt
+        assert "keep `.rac.test` inputs oracle-comparable" in prompt
+        assert (
+            "prefer a contemporary monthly `.rac.test` period like `2022-01` or `2024-01`"
+            in prompt
+        )
 
     def test_build_eval_prompt_single_amount_slice_disallows_speculative_future_tests(
         self, tmp_path

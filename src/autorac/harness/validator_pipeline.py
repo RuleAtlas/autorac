@@ -148,6 +148,7 @@ class _PolicyEngineUSVarAdapter:
     spm: bool = False
     annualized_person_inputs: tuple[tuple[str, str], ...] = ()
     boolean_person_inputs: tuple[tuple[str, str], ...] = ()
+    direct_spm_overrides: tuple[tuple[str, str], ...] = ()
     derived_spm_overrides: tuple[tuple[str, str, tuple[str, ...]], ...] = ()
     unsupported_input_keys: tuple[str, ...] = ()
     unsupported_input_patterns: tuple[str, ...] = ()
@@ -211,6 +212,22 @@ _PE_US_VAR_ADAPTERS = (
         pe_var="meets_snap_asset_test",
         monthly=True,
         spm=True,
+        direct_spm_overrides=(
+            ("snap_assets", "snap_assets"),
+            ("snap_countable_resources", "snap_assets"),
+            (
+                "snap_household_has_elderly_or_disabled_member",
+                "has_usda_elderly_disabled",
+            ),
+        ),
+        unsupported_input_patterns=(
+            "statutory_asset_limit",
+            "countable_financial_resources",
+        ),
+        unsupported_input_reason=(
+            "RAC test restates the SNAP asset-test threshold with local limit/resource "
+            "abstractions that PolicyEngine US does not expose as scenario inputs"
+        ),
     ),
     _PolicyEngineUSVarAdapter(
         rac_vars=("meets_snap_gross_income_test",),
@@ -4534,6 +4551,9 @@ print("BENCHMARK:" + json.dumps(result))
                 override_values[pe_key] = inputs[rac_key]
 
         if adapter is not None:
+            for rac_key, pe_key in adapter.direct_spm_overrides:
+                if rac_key in inputs:
+                    override_values[pe_key] = inputs[rac_key]
             for target_key, operation, source_keys in adapter.derived_spm_overrides:
                 if target_key in override_values:
                     continue
