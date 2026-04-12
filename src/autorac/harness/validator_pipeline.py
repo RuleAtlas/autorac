@@ -483,6 +483,10 @@ _TABLE_ROW_LABEL_PATTERN = re.compile(
     r"\b(?:size|household size|unit size)\s+\d+(?:\s+or\s+more)?(?=\s*:)",
     re.IGNORECASE,
 )
+_SCHEDULE_SIZE_CAP_RESTATEMENT_PATTERN = re.compile(
+    r"\babove\s+(\d+)\s+use(?:s)?\s+the\s+rate\s+for\s+(?:a|an)\s+\1(?:\s+member)?\s+household\b",
+    re.IGNORECASE,
+)
 _CARDINAL_WORD_VALUES = {
     "zero": 0.0,
     "one": 1.0,
@@ -820,6 +824,10 @@ def _clean_source_text_for_numeric_extraction(text: str) -> str:
     cleaned = GROUNDING_DATE_PATTERN.sub(" ", cleaned)
     cleaned = _MONTH_NAME_DATE_PATTERN.sub(" ", cleaned)
     cleaned = _MONTH_DAY_OF_MONTH_PATTERN.sub(" ", cleaned)
+    cleaned = _SCHEDULE_SIZE_CAP_RESTATEMENT_PATTERN.sub(
+        lambda match: f"above {match.group(1)} use the capped household rate",
+        cleaned,
+    )
     cleaned = _TABLE_KEY_ASSIGNMENT_PATTERN.sub(" ", cleaned)
     for pattern in _SOURCE_REFERENCE_PATTERNS:
         cleaned = pattern.sub(" ", cleaned)
@@ -3553,6 +3561,9 @@ print("BENCHMARK:" + json.dumps(result))
             "snap_expected_contribution": "snap_expected_contribution",
             "snap_min_allotment": "snap_min_allotment",
             "snap_net_income": "snap_net_income",
+            "snap_standard_deduction": "snap_standard_deduction",
+            "snap_child_support_deduction": "snap_child_support_deduction",
+            "snap_excess_medical_expense_deduction": "snap_excess_medical_expense_deduction",
             "snap_maximum_allotment": "snap_max_allotment",
             "minimum_allotment": "snap_min_allotment",
             "snap_net_income_calculation": "snap_net_income",
@@ -3933,6 +3944,9 @@ print("BENCHMARK:" + json.dumps(result))
         "snap_expected_contribution",
         "snap_min_allotment",
         "snap_gross_income",
+        "snap_standard_deduction",
+        "snap_child_support_deduction",
+        "snap_excess_medical_expense_deduction",
         "snap_emergency_allotment",
         "ssi",
         "ssi_amount_if_eligible",
@@ -3947,6 +3961,9 @@ print("BENCHMARK:" + json.dumps(result))
         "snap_net_income",
         "snap_expected_contribution",
         "snap_min_allotment",
+        "snap_standard_deduction",
+        "snap_child_support_deduction",
+        "snap_excess_medical_expense_deduction",
     }
 
     def _is_pe_test_mappable(

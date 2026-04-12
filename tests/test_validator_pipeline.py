@@ -539,6 +539,16 @@ AK:
         assert occurrences.count(303.0) == 1
         assert occurrences.count(308.0) == 1
 
+    def test_collapses_schedule_size_cap_restatement(self):
+        occurrences = extract_numeric_occurrences_from_text(
+            """
+The SNAP standard deduction is determined monthly by State group and SNAP unit size.
+Household sizes above 6 use the rate for a 6 member household in all states.
+"""
+        )
+
+        assert occurrences.count(6.0) == 1
+
 
 class TestImportClosureHelpers:
     def test_extract_import_paths_supports_list_and_mapping_forms(self, pipeline):
@@ -4171,6 +4181,12 @@ class TestGetPeVariableMap:
         assert mapping["snap_expected_contribution"] == "snap_expected_contribution"
         assert mapping["snap_min_allotment"] == "snap_min_allotment"
         assert mapping["snap_net_income"] == "snap_net_income"
+        assert mapping["snap_standard_deduction"] == "snap_standard_deduction"
+        assert mapping["snap_child_support_deduction"] == "snap_child_support_deduction"
+        assert (
+            mapping["snap_excess_medical_expense_deduction"]
+            == "snap_excess_medical_expense_deduction"
+        )
 
     def test_uk_child_benefit_leaf_mapping(self, pipeline):
         mapping = pipeline._get_pe_variable_map("uk")
@@ -4187,9 +4203,15 @@ class TestGetPeVariableMap:
 
     def test_pe_monthly_vars(self, pipeline):
         assert "snap" in pipeline._PE_MONTHLY_VARS
+        assert "snap_standard_deduction" in pipeline._PE_MONTHLY_VARS
+        assert "snap_child_support_deduction" in pipeline._PE_MONTHLY_VARS
+        assert "snap_excess_medical_expense_deduction" in pipeline._PE_MONTHLY_VARS
 
     def test_pe_spm_vars(self, pipeline):
         assert "snap" in pipeline._PE_SPM_VARS
+        assert "snap_standard_deduction" in pipeline._PE_SPM_VARS
+        assert "snap_child_support_deduction" in pipeline._PE_SPM_VARS
+        assert "snap_excess_medical_expense_deduction" in pipeline._PE_SPM_VARS
 
 
 # =========================================================================
