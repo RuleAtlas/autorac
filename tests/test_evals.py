@@ -5711,6 +5711,10 @@ class TestSourceEval:
             in prompt
         )
         assert (
+            "do not introduce household proxy inputs like `snap_household_has_eligible_participating_member`"
+            in prompt
+        )
+        assert (
             "import that copied current-effective symbol rather than jumping past it to an older base-statute symbol"
             in prompt
         )
