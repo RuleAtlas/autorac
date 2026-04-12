@@ -2709,6 +2709,8 @@ class TestEvalPrompt:
         assert "Do not push it upstream into an intermediate component" in prompt
         assert "Wrong for a clause like `allotment equals the thrifty food plan reduced by 30 per centum of income" in prompt
         assert "keep `snap_expected_contribution = snap_net_income * 0.3`" in prompt
+        assert "Do not fabricate an `imports:` target from a cited section unless that exact `path#symbol` import target is listed" in prompt
+        assert "instead of guessing a broken import like `statute/...#symbol`" in prompt
         assert "compute the pre-rounding amount exactly" in prompt
         assert "`251 * 0.08 = 20.08`, which still rounds to `20`, not `21`" in prompt
         assert "floor(amount + 0.5)" in prompt
