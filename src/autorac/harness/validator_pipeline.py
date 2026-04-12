@@ -3563,7 +3563,7 @@ print("BENCHMARK:" + json.dumps(result))
             "snap_min_allotment": "snap_min_allotment",
             "snap_net_income": "snap_net_income",
             "snap_standard_deduction": "snap_standard_deduction",
-            "snap_child_support_deduction": "snap_child_support_deduction",
+            "snap_child_support_deduction": "snap_child_support_gross_income_deduction",
             "snap_excess_medical_expense_deduction": "snap_excess_medical_expense_deduction",
             "snap_maximum_allotment": "snap_max_allotment",
             "minimum_allotment": "snap_min_allotment",
@@ -3944,6 +3944,7 @@ print("BENCHMARK:" + json.dumps(result))
         "snap_net_income",
         "snap_expected_contribution",
         "snap_min_allotment",
+        "snap_child_support_gross_income_deduction",
         "snap_gross_income",
         "snap_standard_deduction",
         "snap_child_support_deduction",
@@ -3962,6 +3963,7 @@ print("BENCHMARK:" + json.dumps(result))
         "snap_net_income",
         "snap_expected_contribution",
         "snap_min_allotment",
+        "snap_child_support_gross_income_deduction",
         "snap_standard_deduction",
         "snap_child_support_deduction",
         "snap_excess_medical_expense_deduction",
@@ -4260,8 +4262,7 @@ print("BENCHMARK:" + json.dumps(result))
         else:
             calc_period = f"int('{year}')"
 
-        # Build people
-        people_parts = [f"'adult': {{'age': {{'{year}': 30}}}}"]
+        adult_attrs = [f"'age': {{'{year}': 30}}"]
         members = ["'adult'"]
 
         # Check for employment income / earned income
@@ -4269,9 +4270,17 @@ print("BENCHMARK:" + json.dumps(result))
             "employment_income", inputs.get("earned_income", inputs.get("wages", 0))
         )
         if earned:
-            people_parts[0] = (
-                f"'adult': {{'age': {{'{year}': 30}}, 'employment_income': {{'{year}': {earned}}}}}"
-            )
+            adult_attrs.append(f"'employment_income': {{'{year}': {earned}}}")
+
+        child_support_paid = inputs.get("snap_child_support_payments_made")
+        if child_support_paid is not None:
+            with contextlib.suppress(TypeError, ValueError):
+                annual_child_support = float(child_support_paid) * 12
+                adult_attrs.append(
+                    f"'child_support_expense': {{'{year}': {annual_child_support}}}"
+                )
+
+        people_parts = [f"'adult': {{{', '.join(adult_attrs)}}}"]
 
         # Add spouse if joint
         if joint_filing:
@@ -4318,6 +4327,13 @@ print("BENCHMARK:" + json.dumps(result))
         elif "state_group" in inputs:
             household_extra_parts.append(
                 f"'state_group_str': {{'{year}': {repr(inputs['state_group'])}}}"
+            )
+        if "snap_state_uses_child_support_deduction" in inputs:
+            deduction_state = (
+                "TX" if bool(inputs["snap_state_uses_child_support_deduction"]) else "CA"
+            )
+            household_extra_parts.append(
+                f"'state_code_str': {{'{year}': {repr(deduction_state)}}}"
             )
         household_extra = ", ".join(household_extra_parts)
 

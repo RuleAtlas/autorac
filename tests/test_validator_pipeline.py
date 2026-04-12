@@ -4262,7 +4262,10 @@ class TestGetPeVariableMap:
         assert mapping["snap_min_allotment"] == "snap_min_allotment"
         assert mapping["snap_net_income"] == "snap_net_income"
         assert mapping["snap_standard_deduction"] == "snap_standard_deduction"
-        assert mapping["snap_child_support_deduction"] == "snap_child_support_deduction"
+        assert (
+            mapping["snap_child_support_deduction"]
+            == "snap_child_support_gross_income_deduction"
+        )
         assert (
             mapping["snap_excess_medical_expense_deduction"]
             == "snap_excess_medical_expense_deduction"
@@ -4285,12 +4288,14 @@ class TestGetPeVariableMap:
         assert "snap" in pipeline._PE_MONTHLY_VARS
         assert "snap_standard_deduction" in pipeline._PE_MONTHLY_VARS
         assert "snap_child_support_deduction" in pipeline._PE_MONTHLY_VARS
+        assert "snap_child_support_gross_income_deduction" in pipeline._PE_MONTHLY_VARS
         assert "snap_excess_medical_expense_deduction" in pipeline._PE_MONTHLY_VARS
 
     def test_pe_spm_vars(self, pipeline):
         assert "snap" in pipeline._PE_SPM_VARS
         assert "snap_standard_deduction" in pipeline._PE_SPM_VARS
         assert "snap_child_support_deduction" in pipeline._PE_SPM_VARS
+        assert "snap_child_support_gross_income_deduction" in pipeline._PE_SPM_VARS
         assert "snap_excess_medical_expense_deduction" in pipeline._PE_SPM_VARS
 
     def test_build_pe_us_script_maps_snap_standard_deduction_inputs(self, pipeline):
@@ -4306,6 +4311,20 @@ class TestGetPeVariableMap:
 
         assert "'state_group_str': {'2022': 'AK'}" in script
         assert "'snap_unit_size': {'2022-01': 4}" in script
+
+    def test_build_pe_us_script_maps_child_support_inputs(self, pipeline):
+        script = pipeline._build_pe_us_scenario_script(
+            "snap_child_support_gross_income_deduction",
+            {
+                "period": "2022-01-01",
+                "snap_child_support_payments_made": 3,
+                "snap_state_uses_child_support_deduction": True,
+            },
+            "2022",
+        )
+
+        assert "'child_support_expense': {'2022': 36.0}" in script
+        assert "'state_code_str': {'2022': 'TX'}" in script
 
 
 # =========================================================================
