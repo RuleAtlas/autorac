@@ -330,6 +330,7 @@ class TestExtractNumbersFromText:
         numbers = extract_numbers_from_text(
             """
 7 U.S.C. 2017(c)(3) Optional combined allotment for expedited households
+Households applying after the 15th day of a month may receive the option.
 Effective October 1, 2025 through September 30, 2026.
 - CONTIGUOUS_US: 1=298, 2=546, each additional person +218
 """
@@ -339,6 +340,7 @@ Effective October 1, 2025 through September 30, 2026.
         assert 3.0 not in numbers
         assert 1.0 not in numbers
         assert 2.0 not in numbers
+        assert 15.0 not in numbers
         assert 30.0 not in numbers
         assert 2025.0 not in numbers
         assert 2026.0 not in numbers
@@ -466,6 +468,7 @@ The amount is $20 per month.
         occurrences = extract_numeric_occurrences_from_text(
             """
 7 U.S.C. 2017(c)(3) Optional combined allotment for expedited households
+Households applying after the 15th day of a month may receive the option.
 Effective October 1, 2025 through September 30, 2026.
 - CONTIGUOUS_US: 1=298, 2=546, each additional person +218
 """
@@ -475,6 +478,7 @@ Effective October 1, 2025 through September 30, 2026.
         assert 3.0 not in occurrences
         assert 1.0 not in occurrences
         assert 2.0 not in occurrences
+        assert 15.0 not in occurrences
         assert 30.0 not in occurrences
         assert 2025.0 not in occurrences
         assert 2026.0 not in occurrences

@@ -459,6 +459,10 @@ _MONTH_NAME_DATE_PATTERN = re.compile(
     rf"\b{_MONTH_NAME_BODY}\s+\d{{1,2}},\s+\d{{4}}\b",
     re.IGNORECASE,
 )
+_MONTH_DAY_OF_MONTH_PATTERN = re.compile(
+    r"\b\d{1,2}(?:st|nd|rd|th)\s+day\s+of\s+(?:a|the)\s+month\b",
+    re.IGNORECASE,
+)
 _ORDINAL_NUMBER_PATTERN = re.compile(r"\b(\d+)(?:st|nd|rd|th)\b", re.IGNORECASE)
 _SUBPOUND_MONEY_PATTERN = re.compile(
     r"(\d+(?:\.\d+)?)\s*(?:pence|penny)\b", re.IGNORECASE
@@ -742,6 +746,7 @@ def _clean_source_text_for_numeric_extraction(text: str) -> str:
     cleaned = "\n".join(cleaned_lines)
     cleaned = GROUNDING_DATE_PATTERN.sub(" ", cleaned)
     cleaned = _MONTH_NAME_DATE_PATTERN.sub(" ", cleaned)
+    cleaned = _MONTH_DAY_OF_MONTH_PATTERN.sub(" ", cleaned)
     cleaned = _TABLE_KEY_ASSIGNMENT_PATTERN.sub(" ", cleaned)
     for pattern in _SOURCE_REFERENCE_PATTERNS:
         cleaned = pattern.sub(" ", cleaned)
