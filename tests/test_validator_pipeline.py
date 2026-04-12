@@ -4550,6 +4550,62 @@ class TestGetPeVariableMap:
         assert "'snap_child_support_deduction': {'2022-01': 20}" in script
         assert "'snap_excess_medical_expense_deduction': {'2022-01': 30}" in script
 
+    def test_build_pe_us_script_maps_direct_pre_shelter_income_synonym(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_us_scenario_script(
+            "snap_net_income_pre_shelter",
+            {
+                "period": "2024-01",
+                "snap_monthly_household_income_after_all_other_applicable_deductions": 50,
+            },
+            "2024",
+        )
+
+        assert "'snap_net_income_pre_shelter': {'2024-01': 50}" in script
+
+    def test_build_pe_us_script_maps_long_pre_shelter_income_synonym(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_us_scenario_script(
+            "snap_net_income_pre_shelter",
+            {
+                "period": "2024-01",
+                "snap_monthly_household_income_after_all_other_applicable_deductions_have_been_allowed": 125,
+            },
+            "2024",
+        )
+
+        assert "'snap_net_income_pre_shelter': {'2024-01': 125}" in script
+
+    def test_build_pe_us_script_maps_household_pre_shelter_income_synonym(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_us_scenario_script(
+            "snap_net_income_pre_shelter",
+            {
+                "period": "2024-01",
+                "snap_household_income_after_all_other_applicable_deductions": 300,
+            },
+            "2024",
+        )
+
+        assert "'snap_net_income_pre_shelter': {'2024-01': 300}" in script
+
+    def test_build_pe_us_script_maps_short_pre_shelter_income_synonym(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_us_scenario_script(
+            "snap_net_income_pre_shelter",
+            {
+                "period": "2024-01",
+                "snap_income_after_all_other_applicable_deductions": 250,
+            },
+            "2024",
+        )
+
+        assert "'snap_net_income_pre_shelter': {'2024-01': 250}" in script
+
     def test_build_pe_us_script_derives_pre_subsidy_childcare_expenses_for_pre_shelter_path(
         self, pipeline
     ):

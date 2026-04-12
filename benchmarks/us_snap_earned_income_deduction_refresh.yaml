@@ -15,8 +15,6 @@ cases:
     name: snap_earned_income_deduction
     source_id: SNAP earned income deduction under 7 USC 2014(e)(2)(B)
     source_file: ../../rac-us/sources/slices/7-USC/snap/current-effective/snap_earned_income_deduction.txt
-    allow_context:
-      - ../../rac-us/statute/7/2014/e.rac
     oracle: policyengine
     policyengine_country: auto
     policyengine_rac_var_hint: snap_earned_income_deduction

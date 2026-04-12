@@ -237,6 +237,30 @@ _PE_US_VAR_ADAPTERS = (
         monthly=True,
         spm=True,
         direct_spm_overrides=(
+            (
+                "snap_monthly_household_income_after_all_other_applicable_deductions",
+                "snap_net_income_pre_shelter",
+            ),
+            (
+                "snap_monthly_household_income_after_all_other_applicable_deductions_have_been_allowed",
+                "snap_net_income_pre_shelter",
+            ),
+            (
+                "snap_household_income_after_all_other_applicable_deductions",
+                "snap_net_income_pre_shelter",
+            ),
+            (
+                "snap_household_income_after_all_other_applicable_deductions_have_been_allowed",
+                "snap_net_income_pre_shelter",
+            ),
+            (
+                "snap_income_after_all_other_applicable_deductions",
+                "snap_net_income_pre_shelter",
+            ),
+            (
+                "snap_income_after_all_other_applicable_deductions_have_been_allowed",
+                "snap_net_income_pre_shelter",
+            ),
             ("snap_gross_income", "snap_gross_income"),
             ("snap_standard_deduction", "snap_standard_deduction"),
             ("snap_earned_income_deduction", "snap_earned_income_deduction"),

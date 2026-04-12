@@ -5158,16 +5158,7 @@ cases:
             / "current-effective"
             / "snap_earned_income_deduction.txt"
         ).resolve()
-        assert case.allow_context == [
-            (
-                repo_root.parent
-                / "rac-us"
-                / "statute"
-                / "7"
-                / "2014"
-                / "e.rac"
-            ).resolve()
-        ]
+        assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert case.policyengine_rac_var_hint == "snap_earned_income_deduction"
@@ -5198,16 +5189,7 @@ cases:
             / "current-effective"
             / "snap_net_income_pre_shelter.txt"
         ).resolve()
-        assert case.allow_context == [
-            (
-                repo_root.parent
-                / "rac-us"
-                / "statute"
-                / "7"
-                / "2014"
-                / "e.rac"
-            ).resolve()
-        ]
+        assert case.allow_context == []
         assert case.oracle == "policyengine"
         assert case.policyengine_country == "auto"
         assert case.policyengine_rac_var_hint == "snap_net_income_pre_shelter"
