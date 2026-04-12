@@ -625,6 +625,8 @@ def _extract_formula_grounding_values(
         raw = match.group(1).replace(",", "")
         if raw == "0.5" and _is_half_up_rounding_expression(cleaned):
             continue
+        if _is_structural_household_size_index_literal(cleaned, raw):
+            continue
         with contextlib.suppress(ValueError):
             value = float(raw)
             if value not in GROUNDING_ALLOWED_VALUES:
@@ -658,7 +660,7 @@ def _is_structural_household_size_index_literal(expression: str, literal: str) -
         rf"\b(?:if|elif)\s+[A-Za-z_]\w*household_size\s*(?:==|>=|>|<=|<)\s*{re.escape(literal)}\b"
     )
     delta_pattern = re.compile(
-        rf"\(\s*[A-Za-z_]\w*household_size\s*-\s*{re.escape(literal)}\s*\)"
+        rf"(?:\(\s*)?[A-Za-z_]\w*household_size\s*-\s*{re.escape(literal)}(?:\s*\))?"
     )
     return bool(comparison_pattern.search(normalized) or delta_pattern.search(normalized))
 

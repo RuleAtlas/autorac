@@ -1628,6 +1628,13 @@ snap_household_size:
     period: Month
     dtype: Integer
 
+additional_household_members_above_eight:
+    entity: Household
+    period: Month
+    dtype: Integer
+    from 2025-10-01:
+        max(0, snap_household_size - 8)
+
 snap_maximum_allotment:
     entity: Household
     period: Month
@@ -1645,7 +1652,7 @@ snap_maximum_allotment:
         elif snap_household_size == 8:
             maximum_allotment_8
         elif snap_household_size > 8:
-            maximum_allotment_8 + ((snap_household_size - 8) * additional_person_increment)
+            maximum_allotment_8 + (additional_household_members_above_eight * additional_person_increment)
         else:
             0
 
