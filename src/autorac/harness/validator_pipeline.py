@@ -487,6 +487,7 @@ _SCHEDULE_SIZE_CAP_RESTATEMENT_PATTERN = re.compile(
     r"\babove\s+(\d+)\s+use(?:s)?\s+the\s+rate\s+for\s+(?:a|an)\s+\1(?:\s+member)?\s+household\b",
     re.IGNORECASE,
 )
+_SCHEDULE_INDEX_NAME_PATTERN = r"[A-Za-z_]\w*_size(?:_[A-Za-z_]\w*)*"
 _CARDINAL_WORD_VALUES = {
     "zero": 0.0,
     "one": 1.0,
@@ -670,15 +671,15 @@ def _is_structural_schedule_index_literal(expression: str, literal: str) -> bool
         numeric_value = float(literal)
         if not numeric_value.is_integer() or not (4 <= int(numeric_value) <= 8):
             return False
-    if not re.search(r"\b[A-Za-z_]\w*_size\b", expression):
+    if not re.search(rf"\b{_SCHEDULE_INDEX_NAME_PATTERN}\b", expression):
         return False
 
     normalized = re.sub(r"\s+", " ", expression)
     comparison_pattern = re.compile(
-        rf"\b(?:if|elif)\s+[A-Za-z_]\w*_size\s*(?:==|>=|>|<=|<)\s*{re.escape(literal)}\b"
+        rf"\b(?:if|elif)\s+{_SCHEDULE_INDEX_NAME_PATTERN}\s*(?:==|>=|>|<=|<)\s*{re.escape(literal)}\b"
     )
     delta_pattern = re.compile(
-        rf"(?:\(\s*)?[A-Za-z_]\w*_size\s*-\s*{re.escape(literal)}(?:\s*\))?"
+        rf"(?:\(\s*)?{_SCHEDULE_INDEX_NAME_PATTERN}\s*-\s*{re.escape(literal)}(?:\s*\))?"
     )
     return bool(comparison_pattern.search(normalized) or delta_pattern.search(normalized))
 
@@ -4293,6 +4294,8 @@ print("BENCHMARK:" + json.dumps(result))
         snap_overridable = {
             "snap_net_income": "snap_net_income",
             "snap_gross_income": "snap_gross_income",
+            "snap_unit_size": "snap_unit_size",
+            "spm_unit_size": "snap_unit_size",
         }
         override_parts = []
         for rac_key, pe_key in snap_overridable.items():
@@ -4307,6 +4310,17 @@ print("BENCHMARK:" + json.dumps(result))
         if override_parts:
             spm_extra = ", " + ", ".join(override_parts)
 
+        household_extra_parts = [f"'state_name': {{'{year}': 'CA'}}"]
+        if "state_group_str" in inputs:
+            household_extra_parts.append(
+                f"'state_group_str': {{'{year}': {repr(inputs['state_group_str'])}}}"
+            )
+        elif "state_group" in inputs:
+            household_extra_parts.append(
+                f"'state_group_str': {{'{year}': {repr(inputs['state_group'])}}}"
+            )
+        household_extra = ", ".join(household_extra_parts)
+
         script = f"""
 from policyengine_us import Simulation
 
@@ -4314,7 +4328,7 @@ situation = {{
     'people': {people_str},
     'tax_units': {{'tu': {{'members': {members_str}}}}},
     'spm_units': {{'spm': {{'members': {members_str}{spm_extra}}}}},
-    'households': {{'hh': {{'members': {members_str}, 'state_name': {{'{year}': 'CA'}}}}}},
+    'households': {{'hh': {{'members': {members_str}, {household_extra}}}}},
     'families': {{'fam': {{'members': {members_str}}}}},
     'marital_units': {{'mu': {{'members': {['adult', 'spouse'] if joint_filing else ['adult']}}}}},
 }}

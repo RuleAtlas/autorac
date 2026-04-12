@@ -1861,6 +1861,86 @@ size_6_or_more_amount:
         assert result.passed is True
         assert not any("Embedded scalar literal" in issue for issue in result.issues)
 
+    def test_ci_allows_size_segment_schedule_index_literals(self, pipeline):
+        """CI should allow schedule-row indices on helpers that contain `_size_`."""
+        rac_file = pipeline.rac_us_path / "us" / "snap_standard_deduction_segment_leaf.rac"
+        rac_file.parent.mkdir(parents=True, exist_ok=True)
+        rac_file.write_text(
+            '''
+"""
+USDA SNAP standard deduction schedule.
+"""
+
+status: encoded
+
+effective_spm_unit_size_for_standard_deduction:
+    entity: SPMUnit
+    period: Month
+    dtype: Count
+
+snap_standard_deduction:
+    entity: SPMUnit
+    period: Month
+    dtype: Money
+    unit: USD
+    from 2025-10-01:
+        if effective_spm_unit_size_for_standard_deduction <= 3:
+            size_1_3_amount
+        elif effective_spm_unit_size_for_standard_deduction == 4:
+            size_4_amount
+        elif effective_spm_unit_size_for_standard_deduction == 5:
+            size_5_amount
+        else:
+            size_6_or_more_amount
+
+size_1_3_amount:
+    entity: SPMUnit
+    period: Month
+    dtype: Money
+    unit: USD
+    from 2025-10-01: 177
+
+size_4_amount:
+    entity: SPMUnit
+    period: Month
+    dtype: Money
+    unit: USD
+    from 2025-10-01: 184
+
+size_5_amount:
+    entity: SPMUnit
+    period: Month
+    dtype: Money
+    unit: USD
+    from 2025-10-01: 215
+
+size_6_or_more_amount:
+    entity: SPMUnit
+    period: Month
+    dtype: Money
+    unit: USD
+    from 2025-10-01: 246
+'''
+        )
+
+        with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                Mock(
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
+                    stderr="",
+                    returncode=0,
+                ),
+                Mock(
+                    stdout="Checked 1 .rac files\n\nAll files pass validation\n",
+                    stderr="",
+                    returncode=0,
+                ),
+            ]
+            result = pipeline._run_ci(rac_file)
+
+        assert result.passed is True
+        assert not any("Embedded scalar literal" in issue for issue in result.issues)
+
     def test_ci_rejects_decomposed_date_scalars(self, pipeline):
         """CI should fail when calendar dates are split into numeric day/year scalars."""
         rac_file = pipeline.rac_us_path / "uk" / "leaf.rac"
@@ -4212,6 +4292,20 @@ class TestGetPeVariableMap:
         assert "snap_standard_deduction" in pipeline._PE_SPM_VARS
         assert "snap_child_support_deduction" in pipeline._PE_SPM_VARS
         assert "snap_excess_medical_expense_deduction" in pipeline._PE_SPM_VARS
+
+    def test_build_pe_us_script_maps_snap_standard_deduction_inputs(self, pipeline):
+        script = pipeline._build_pe_us_scenario_script(
+            "snap_standard_deduction",
+            {
+                "period": "2022-01-01",
+                "state_group": "AK",
+                "spm_unit_size": 4,
+            },
+            "2022",
+        )
+
+        assert "'state_group_str': {'2022': 'AK'}" in script
+        assert "'snap_unit_size': {'2022-01': 4}" in script
 
 
 # =========================================================================
