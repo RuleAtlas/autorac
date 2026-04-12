@@ -684,10 +684,18 @@ def extract_grounding_values(content: str) -> list[tuple[int, str, float]]:
     in_tests = False
     in_docstring = False
     formula_indent = 0
+    current_symbol_name: str | None = None
 
     for line_number, line in enumerate(content.split("\n"), 1):
         stripped = line.strip()
         indent = len(line) - len(line.lstrip())
+
+        symbol_match = re.match(r"^([A-Za-z_]\w*):\s*$", stripped)
+        if indent == 0 and symbol_match:
+            candidate = symbol_match.group(1)
+            current_symbol_name = (
+                None if candidate.lower() in _DEFINED_SYMBOL_METADATA_KEYS else candidate
+            )
 
         if '"""' in stripped:
             in_docstring = not in_docstring
@@ -727,6 +735,11 @@ def extract_grounding_values(content: str) -> list[tuple[int, str, float]]:
             raw = match.group(1).replace(",", "")
             with contextlib.suppress(ValueError):
                 value = float(raw)
+                if (
+                    current_symbol_name is not None
+                    and _is_structural_schedule_index_helper(current_symbol_name, value)
+                ):
+                    continue
                 if value not in GROUNDING_ALLOWED_VALUES:
                     values.append((line_number, raw, value))
             continue
@@ -749,6 +762,8 @@ def extract_grounding_values(content: str) -> list[tuple[int, str, float]]:
             raw = match.group(2).replace(",", "")
             with contextlib.suppress(ValueError):
                 value = float(raw)
+                if _is_structural_schedule_index_helper(key, value):
+                    continue
                 if value not in GROUNDING_ALLOWED_VALUES:
                     values.append((line_number, raw, value))
 
@@ -805,6 +820,18 @@ def _is_structural_schedule_index_literal(expression: str, literal: str) -> bool
         rf"(?:\(\s*)?{_SCHEDULE_INDEX_NAME_PATTERN}\s*-\s*{re.escape(literal)}(?:\s*\))?"
     )
     return bool(comparison_pattern.search(normalized) or delta_pattern.search(normalized))
+
+
+def _is_structural_schedule_index_helper(name: str, value: float) -> bool:
+    """Return True when a scalar helper only labels a schedule row index."""
+    if not value.is_integer() or not (4 <= int(value) <= 8):
+        return False
+    index = int(value)
+    return bool(
+        re.search(rf"(?:^|_)size_{index}(?:_|$)", name)
+        or re.search(rf"(?:^|_)household_size_{index}(?:_|$)", name)
+        or re.search(rf"(?:^|_)unit_size_{index}(?:_|$)", name)
+    )
 
 
 def _call_body_contains_any(

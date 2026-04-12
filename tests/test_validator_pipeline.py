@@ -1861,6 +1861,93 @@ size_6_or_more_amount:
         assert result.passed is True
         assert not any("Embedded scalar literal" in issue for issue in result.issues)
 
+    def test_ci_allows_schedule_index_helper_scalars(self, pipeline):
+        """CI should ignore helper constants that only name schedule row indices."""
+        rac_file = pipeline.rac_us_path / "us" / "snap_standard_deduction_helper_indices.rac"
+        rac_file.parent.mkdir(parents=True, exist_ok=True)
+        rac_file.write_text(
+            '''
+"""
+USDA SNAP standard deduction schedule:
+- size 1-3: $177
+- size 4: $184
+- size 5: $215
+- size 6 or more: $246
+"""
+
+status: encoded
+
+snap_standard_deduction_size_4:
+    entity: SPMUnit
+    period: Month
+    dtype: Count
+    from 2025-10-01: 4
+
+snap_standard_deduction_size_5:
+    entity: SPMUnit
+    period: Month
+    dtype: Count
+    from 2025-10-01: 5
+
+snap_standard_deduction:
+    entity: SPMUnit
+    period: Month
+    dtype: Money
+    unit: USD
+    from 2025-10-01:
+        if snap_standard_deduction_capped_unit_size == snap_standard_deduction_size_4:
+            size_4_amount
+        elif snap_standard_deduction_capped_unit_size == snap_standard_deduction_size_5:
+            size_5_amount
+        else:
+            size_6_or_more_amount
+
+snap_standard_deduction_capped_unit_size:
+    entity: SPMUnit
+    period: Month
+    dtype: Count
+
+size_4_amount:
+    entity: SPMUnit
+    period: Month
+    dtype: Money
+    unit: USD
+    from 2025-10-01: 184
+
+size_5_amount:
+    entity: SPMUnit
+    period: Month
+    dtype: Money
+    unit: USD
+    from 2025-10-01: 215
+
+size_6_or_more_amount:
+    entity: SPMUnit
+    period: Month
+    dtype: Money
+    unit: USD
+    from 2025-10-01: 246
+'''
+        )
+
+        with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                Mock(
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
+                    stderr="",
+                    returncode=0,
+                ),
+                Mock(
+                    stdout="Checked 1 .rac files\n\nAll files pass validation\n",
+                    stderr="",
+                    returncode=0,
+                ),
+            ]
+            result = pipeline._run_ci(rac_file)
+
+        assert result.passed is True
+        assert not any("missing from source" in issue.lower() for issue in result.issues)
+
     def test_ci_allows_size_segment_schedule_index_literals(self, pipeline):
         """CI should allow schedule-row indices on helpers that contain `_size_`."""
         rac_file = pipeline.rac_us_path / "us" / "snap_standard_deduction_segment_leaf.rac"
