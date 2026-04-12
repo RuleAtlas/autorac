@@ -2588,6 +2588,7 @@ Available precedent files:
 - Add an alternate branch only when `./source.txt` states another grounded branch condition or amount.
 - Test inputs must contain factual predicates or quantities, not the output variable being asserted.
 - In `.rac.test`, input and output values must be plain scalars or simple mappings, not inline variable declarations with keys like `entity`, `period`, `dtype`, `values`, or `from ...`.
+- In `.rac.test`, use concrete numeric literals in inputs and outputs, not arithmetic expressions like `35 + 3`, `12 * 4`, or `1 / 10`.
 - Use `output:` mappings in `.rac.test` cases, not `expect:` blocks.
 - Use concrete ISO calendar dates like `2025-03-21` in `.rac.test` `period:` fields; do not use ISO week strings like `2025-W13`.
 - The `.rac.test` file must contain YAML only, with no trailing notes or prose.
@@ -3793,6 +3794,12 @@ def _normalize_single_amount_row_test_content(
                 normalized_case.get("period"),
                 effective_date,
             )
+        for key in ("input", "inputs", "output"):
+            if key in normalized_case and isinstance(normalized_case[key], dict):
+                normalized_case[key] = {
+                    child_key: _normalize_test_case_value(child_value)
+                    for child_key, child_value in normalized_case[key].items()
+                }
         output = normalized_case.get("output")
         if isinstance(output, dict) and len(output) > 1:
             numeric_output = {
@@ -3957,6 +3964,14 @@ def _normalize_test_case_value(value: object) -> object:
     """Collapse entity/time wrappers in generated .rac.test values to plain scalars."""
     if isinstance(value, list):
         return [_normalize_test_case_value(item) for item in value]
+    if isinstance(value, str):
+        expression = value.strip()
+        if _PURE_NUMERIC_EXPRESSION_PATTERN.fullmatch(expression):
+            try:
+                return yaml.safe_load(_format_safe_numeric_expression(expression))
+            except (TypeError, ValueError, yaml.YAMLError):
+                return value
+        return value
     if not isinstance(value, dict):
         return value
 
@@ -4006,8 +4021,6 @@ def _normalize_test_periods_to_effective_dates(
         rac_content=rac_content,
         source_text=source_text,
     )
-    if effective_date is None and granularity != "Year":
-        return normalized
 
     try:
         payload = yaml.safe_load(normalized)

@@ -1225,6 +1225,52 @@ class TestGeneratedBundleCleaning:
         assert "1 / 10" not in expected.read_text()
         assert "from 2025-03-21: 0.1" in expected.read_text()
 
+    def test_materialize_eval_artifact_normalizes_test_arithmetic_literals(
+        self, tmp_path
+    ):
+        response = (
+            "=== FILE: example.rac ===\n"
+            '"""\nDeduction equals allowable expenses over £35.\n"""\n\n'
+            "allowable_expenses:\n"
+            "    entity: Person\n"
+            "    period: Month\n"
+            "    dtype: Money\n"
+            "    unit: GBP\n"
+            "threshold:\n"
+            "    entity: Person\n"
+            "    period: Month\n"
+            "    dtype: Money\n"
+            "    unit: GBP\n"
+            "    from 2025-03-21: 35\n"
+            "deduction:\n"
+            "    entity: Person\n"
+            "    period: Month\n"
+            "    dtype: Money\n"
+            "    unit: GBP\n"
+            "    from 2025-03-21: max(0, allowable_expenses - threshold)\n"
+            "=== FILE: example.rac.test ===\n"
+            "- name: positive\n"
+            "  period: 2025-03-21\n"
+            "  input:\n"
+            "    allowable_expenses: 35 + 3\n"
+            "  output:\n"
+            "    deduction: 1 + 2\n"
+        )
+        expected = tmp_path / "source" / "example.rac"
+
+        wrote = _materialize_eval_artifact(
+            response,
+            expected,
+            source_text="Deduction equals allowable expenses over £35.\n",
+        )
+
+        assert wrote is True
+        test_text = expected.with_suffix(".rac.test").read_text()
+        assert "35 + 3" not in test_text
+        assert "1 + 2" not in test_text
+        assert "allowable_expenses: 38" in test_text
+        assert "deduction: 3" in test_text
+
     def test_materialize_eval_artifact_does_not_crash_for_conditional_money_leaf(
         self, tmp_path
     ):
@@ -3131,6 +3177,7 @@ class TestEvalPrompt:
         assert "must be a YAML list of cases beginning with `- name:`" in prompt
         assert "Do not add speculative future-period tests" in prompt
         assert "must contain factual predicates or quantities, not the output variable" in prompt
+        assert "use concrete numeric literals in inputs and outputs" in prompt
         assert "Use `output:` mappings in `.rac.test` cases" in prompt
 
     def test_build_eval_prompt_for_uk_branch_leaves_requires_branch_specific_names(
