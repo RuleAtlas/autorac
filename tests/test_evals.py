@@ -6642,6 +6642,11 @@ class TestSourceEval:
             "do not add a top-level `imports:` entry to the bare canonical `cfr/...#...` or `usc/...#...` path"
             in prompt
         )
+        assert "`*_is_in_state` or `*_is_in_jurisdiction`" in prompt
+        assert (
+            "use only positive/continuity cases rather than a fabricated out-of-jurisdiction false case"
+            in prompt
+        )
 
     def test_build_eval_prompt_single_amount_slice_disallows_speculative_future_tests(
         self, tmp_path
