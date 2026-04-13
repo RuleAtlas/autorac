@@ -385,6 +385,27 @@ As of 2026-04-10:
   - North Carolina standard and limited utility allowance slices now have checked-in source excerpts and repo-augmented AutoRAC benchmarks grounded in the official NC FNS 360 manual, and the validator can replay nationwide SNAP utility-allowance variables with NC-specific inputs and alias normalization.
   - The first NC limited utility allowance benchmark reached a clean ready state with success, compile, CI, zero-ungrounded numerics, generalist review, and PolicyEngine all passing.
   - The first NC telephone utility allowance benchmark did not close. AutoRAC generated a plausible artifact, but PolicyEngine returned `$42.15` while the NC manual slice states `$41`, and direct inspection of the installed PolicyEngine parameter tree showed that PE currently uprates NC phone allowance data from the older `2023-10-01` entry instead of carrying the official `2024-10-01` NC manual value. This is recorded as an external oracle gap, not as a kept harness regression.
+
+### 2026-04-12: North Carolina SNAP telephone utility allowance closed after a PolicyEngine data correction
+
+- Primary commits:
+  - `d60e19d` `Add NC FY2025 SNAP phone allowance` (local `policyengine-us` worktree)
+  - `1ccf3f9` `Ignore row-labeled SNAP schedule helpers`
+- Hypothesis:
+  - The remaining NC telephone utility allowance failure was not a substantive disagreement about the cited current-effective state rule. It was a combination of (1) stale PolicyEngine NC phone data that skipped the official `2024-10-01` `$41` value and uprated from the older `2023-10-01` entry instead, and (2) one residual AutoRAC grounding false negative that treated helper names like `unit_size_row_4` as substantive ungrounded numerics.
+- Effect:
+  - The local `policyengine-us` parameter tree now carries the explicit NC `2024-10-01: 41` phone allowance entry, with a targeted `2025-01` baseline regression.
+  - Direct PolicyEngine evaluation for `2025-01` now returns `41.0` for NC phone allowance, aligning with the official NC FNS 360 manual slice.
+  - AutoRAC grounding now ignores row-labeled schedule helper names the same way it already ignored worded helper labels, so a flat TUA table no longer fails the zero-ungrounded gate on helper labels alone.
+  - The refreshed NC telephone utility allowance benchmark now reaches a clean ready state with success, compile, CI, zero-ungrounded numerics, generalist review, and PolicyEngine all passing.
+- Primary evidence paths:
+  - [snap_individual_utility_allowance_nc.txt](../../rac-us/sources/slices/ncdhhs/fns/360/current-effective/snap_individual_utility_allowance_nc.txt)
+  - [phone.yaml](../../../worktrees/policyengine-us-main-view/policyengine_us/parameters/gov/usda/snap/income/deductions/utility/single/phone.yaml)
+  - [snap_individual_utility_allowance.yaml](../../../worktrees/policyengine-us-main-view/policyengine_us/tests/policy/baseline/gov/usda/snap/income/deductions/snap_individual_utility_allowance.yaml)
+  - [validator_pipeline.py](../src/autorac/harness/validator_pipeline.py)
+  - [test_validator_pipeline.py](../tests/test_validator_pipeline.py)
+  - [us-snap-nc-individual-utility-allowance-refresh1-policyengine-gap-20260412](../artifacts/eval-suites/us-snap-nc-individual-utility-allowance-refresh1-policyengine-gap-20260412)
+  - [us-snap-nc-individual-utility-allowance-refresh3-ready-20260412](../artifacts/eval-suites/us-snap-nc-individual-utility-allowance-refresh3-ready-20260412)
 - Primary evidence paths:
   - [us_snap_nc_standard_utility_allowance_refresh.yaml](../benchmarks/us_snap_nc_standard_utility_allowance_refresh.yaml)
   - [us_snap_nc_limited_utility_allowance_refresh.yaml](../benchmarks/us_snap_nc_limited_utility_allowance_refresh.yaml)
