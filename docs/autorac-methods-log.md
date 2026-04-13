@@ -519,6 +519,24 @@ As of 2026-04-10:
   - [us-snap-nc-individual-utility-allowance-reorg1-failed-20260413](../artifacts/eval-suites/us-snap-nc-individual-utility-allowance-reorg1-failed-20260413)
   - [us-snap-nc-individual-utility-allowance-reorg2-ready-20260413](../artifacts/eval-suites/us-snap-nc-individual-utility-allowance-reorg2-ready-20260413)
 
+### 2026-04-13: New York SNAP telephone utility allowance established as the next jurisdictional overlay
+
+- Hypothesis:
+  - After Tennessee and North Carolina closed cleanly, the next useful queue item should be a low-complexity third state overlay on an existing jurisdiction repo, not another federal slice. New York phone utility allowance is the narrowest clean candidate because the OTDA October 1, 2025 SUA notice sets one statewide phone amount and PolicyEngine already exposes `snap_individual_utility_allowance` for New York.
+- Effect:
+  - Added a New York source slice and `relation: sets` sidecar under `rac-us-ny`, anchored to the delegated federal SNAP utility-allowance slot.
+  - Added a checked-in AutoRAC benchmark manifest and manifest-load test for the New York telephone lane.
+  - The first two smoke runs were not kept as harness regressions: they exposed that the drafted source slice repeated the same `$32` fact too many times for CI's numeric-occurrence rule. Narrowing the slice to the single substantive statewide fact closed the lane without new validator work.
+  - The third smoke run reached a clean ready state against compile, CI, generalist review, and PolicyEngine, establishing New York telephone utility allowance as the next proven jurisdictional SNAP overlay.
+- Primary evidence paths:
+  - [us_snap_ny_individual_utility_allowance_refresh.yaml](../benchmarks/us_snap_ny_individual_utility_allowance_refresh.yaml)
+  - [test_evals.py](../tests/test_evals.py)
+  - [snap_individual_utility_allowance_ny.txt](../../rac-us-ny/sources/slices/otda/snap/current-effective/snap_individual_utility_allowance_ny.txt)
+  - [snap_individual_utility_allowance_ny.meta.yaml](../../rac-us-ny/sources/slices/otda/snap/current-effective/snap_individual_utility_allowance_ny.meta.yaml)
+  - [us-snap-ny-individual-utility-allowance-smoke1-failed-20260413](../artifacts/eval-suites/us-snap-ny-individual-utility-allowance-smoke1-failed-20260413)
+  - [us-snap-ny-individual-utility-allowance-smoke2-failed-20260413](../artifacts/eval-suites/us-snap-ny-individual-utility-allowance-smoke2-failed-20260413)
+  - [us-snap-ny-individual-utility-allowance-smoke3-ready-20260413](../artifacts/eval-suites/us-snap-ny-individual-utility-allowance-smoke3-ready-20260413)
+
 ## Open Documentation Debt
 
 - Add before/after metric snapshots for every kept harness change rather than relying on commit messages.

@@ -5509,6 +5509,42 @@ cases:
         assert case.policyengine_country == "auto"
         assert case.policyengine_rac_var_hint == "snap_individual_utility_allowance"
 
+    def test_repo_us_snap_ny_individual_utility_allowance_refresh_manifest_loads_expected_case(
+        self,
+    ):
+        repo_root = Path(__file__).resolve().parents[1]
+        manifest = load_eval_suite_manifest(
+            repo_root
+            / "benchmarks"
+            / "us_snap_ny_individual_utility_allowance_refresh.yaml"
+        )
+
+        assert manifest.name == "New York SNAP individual utility allowance refresh"
+        assert manifest.mode == "repo-augmented"
+        assert len(manifest.cases) == 1
+        assert manifest.gates.min_policyengine_pass_rate == 1.0
+        case = manifest.cases[0]
+        assert case.kind == "source"
+        assert case.name == "snap_individual_utility_allowance_ny"
+        assert (
+            case.source_id
+            == "New York SNAP telephone utility allowance under OTDA LDSS-5006 effective October 1, 2025"
+        )
+        assert case.source_file == (
+            repo_root.parent
+            / "rac-us-ny"
+            / "sources"
+            / "slices"
+            / "otda"
+            / "snap"
+            / "current-effective"
+            / "snap_individual_utility_allowance_ny.txt"
+        ).resolve()
+        assert case.allow_context == []
+        assert case.oracle == "policyengine"
+        assert case.policyengine_country == "auto"
+        assert case.policyengine_rac_var_hint == "snap_individual_utility_allowance"
+
 
 class TestReadinessSummary:
     def test_summarize_readiness_applies_suite_gates(self):
