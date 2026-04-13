@@ -5884,6 +5884,45 @@ cases:
             == "snap_self_employment_expense_based_deduction_applies"
         )
 
+    def test_repo_us_snap_ny_self_employment_expense_option_refresh_manifest_loads_expected_case(
+        self,
+    ):
+        repo_root = Path(__file__).resolve().parents[1]
+        manifest = load_eval_suite_manifest(
+            repo_root
+            / "benchmarks"
+            / "us_snap_ny_self_employment_expense_option_refresh.yaml"
+        )
+
+        assert manifest.name == "New York SNAP self-employment expense option refresh"
+        assert manifest.mode == "repo-augmented"
+        assert len(manifest.cases) == 1
+        assert manifest.gates.min_policyengine_pass_rate == 1.0
+        case = manifest.cases[0]
+        assert case.kind == "source"
+        assert case.name == "snap_self_employment_expense_based_deduction_applies_ny"
+        assert (
+            case.source_id
+            == "New York SNAP self-employment expense treatment under OTDA SNAP Source Book section 13.H"
+        )
+        assert case.source_file == (
+            repo_root.parent
+            / "rac-us-ny"
+            / "sources"
+            / "slices"
+            / "otda"
+            / "snap"
+            / "current-effective"
+            / "snap_self_employment_expense_based_deduction_applies_ny.txt"
+        ).resolve()
+        assert case.allow_context == []
+        assert case.oracle == "policyengine"
+        assert case.policyengine_country == "auto"
+        assert (
+            case.policyengine_rac_var_hint
+            == "snap_self_employment_expense_based_deduction_applies"
+        )
+
     def test_repo_us_snap_ny_standard_utility_allowance_refresh_manifest_loads_expected_case(
         self,
     ):
