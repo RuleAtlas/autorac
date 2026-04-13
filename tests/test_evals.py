@@ -5226,6 +5226,80 @@ cases:
         assert case.policyengine_country == "auto"
         assert case.policyengine_rac_var_hint == "snap_standard_utility_allowance"
 
+    def test_repo_us_snap_nc_limited_utility_allowance_refresh_manifest_loads_expected_case(
+        self,
+    ):
+        repo_root = Path(__file__).resolve().parents[1]
+        manifest = load_eval_suite_manifest(
+            repo_root / "benchmarks" / "us_snap_nc_limited_utility_allowance_refresh.yaml"
+        )
+
+        assert manifest.name == "North Carolina SNAP limited utility allowance refresh"
+        assert manifest.mode == "repo-augmented"
+        assert len(manifest.cases) == 1
+        assert manifest.gates.min_policyengine_pass_rate == 1.0
+        case = manifest.cases[0]
+        assert case.kind == "source"
+        assert case.name == "snap_limited_utility_allowance_nc"
+        assert (
+            case.source_id
+            == "North Carolina SNAP basic utility allowance under FNS 360.01(A)(2)"
+        )
+        assert case.source_file == (
+            repo_root.parent
+            / "rac-us"
+            / "sources"
+            / "slices"
+            / "ncdhhs"
+            / "fns"
+            / "360"
+            / "current-effective"
+            / "snap_limited_utility_allowance_nc.txt"
+        ).resolve()
+        assert case.allow_context == []
+        assert case.oracle == "policyengine"
+        assert case.policyengine_country == "auto"
+        assert case.policyengine_rac_var_hint == "snap_limited_utility_allowance"
+
+    def test_repo_us_snap_nc_individual_utility_allowance_refresh_manifest_loads_expected_case(
+        self,
+    ):
+        repo_root = Path(__file__).resolve().parents[1]
+        manifest = load_eval_suite_manifest(
+            repo_root
+            / "benchmarks"
+            / "us_snap_nc_individual_utility_allowance_refresh.yaml"
+        )
+
+        assert (
+            manifest.name == "North Carolina SNAP individual utility allowance refresh"
+        )
+        assert manifest.mode == "repo-augmented"
+        assert len(manifest.cases) == 1
+        assert manifest.gates.min_policyengine_pass_rate == 1.0
+        case = manifest.cases[0]
+        assert case.kind == "source"
+        assert case.name == "snap_individual_utility_allowance_nc"
+        assert (
+            case.source_id
+            == "North Carolina SNAP telephone utility allowance under FNS 360.01(A)(3)"
+        )
+        assert case.source_file == (
+            repo_root.parent
+            / "rac-us"
+            / "sources"
+            / "slices"
+            / "ncdhhs"
+            / "fns"
+            / "360"
+            / "current-effective"
+            / "snap_individual_utility_allowance_nc.txt"
+        ).resolve()
+        assert case.allow_context == []
+        assert case.oracle == "policyengine"
+        assert case.policyengine_country == "auto"
+        assert case.policyengine_rac_var_hint == "snap_individual_utility_allowance"
+
 
 class TestReadinessSummary:
     def test_summarize_readiness_applies_suite_gates(self):

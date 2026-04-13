@@ -4678,6 +4678,22 @@ class TestGetPeVariableMap:
 
         assert "'snap_utility_allowance_type': {'2025-01': 'LUA'}" in script
 
+    def test_build_pe_us_script_normalizes_snap_telephone_allowance_alias(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_us_scenario_script(
+            "snap_individual_utility_allowance",
+            {
+                "period": "2025-01",
+                "snap_utility_allowance_type": "TUA",
+                "snap_utility_region_str": "NC",
+                "spm_unit_size": 3,
+            },
+            "2025",
+        )
+
+        assert "'snap_utility_allowance_type': {'2025-01': 'IUA'}" in script
+
     def test_build_pe_us_script_derives_snap_earned_income_from_exclusions(
         self, pipeline
     ):
