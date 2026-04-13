@@ -347,6 +347,11 @@ _PE_US_VAR_ADAPTERS = (
         spm=True,
     ),
     _PolicyEngineUSVarAdapter(
+        rac_vars=("snap_state_uses_child_support_deduction",),
+        pe_var="snap_state_uses_child_support_deduction",
+        default_state_code="TN",
+    ),
+    _PolicyEngineUSVarAdapter(
         rac_vars=("meets_snap_asset_test",),
         pe_var="meets_snap_asset_test",
         monthly=True,
@@ -957,6 +962,47 @@ _DEFINED_SYMBOL_METADATA_KEYS = {
     "stub_for",
     "skip_reason",
 }
+
+
+def _load_nearby_eval_source_metadata(rac_file: Path) -> dict[str, object] | None:
+    """Load source-metadata from a nearby eval workspace when present."""
+    for ancestor in rac_file.parents:
+        eval_root = ancestor / "_eval_workspaces"
+        if not eval_root.exists():
+            continue
+        for manifest_path in sorted(eval_root.glob("**/context-manifest.json")):
+            try:
+                payload = json.loads(manifest_path.read_text())
+            except Exception:
+                continue
+            metadata = payload.get("source_metadata")
+            if isinstance(metadata, dict):
+                return metadata
+    return None
+
+
+def _source_metadata_sets_target_symbol(
+    source_metadata: dict[str, object] | None, symbol_name: str
+) -> bool:
+    """Return whether source metadata declares a `sets` relation for the symbol."""
+    if not isinstance(source_metadata, dict):
+        return False
+    relations = source_metadata.get("relations")
+    if not isinstance(relations, list):
+        return False
+
+    for relation in relations:
+        if not isinstance(relation, dict):
+            continue
+        if str(relation.get("relation", "")).lower() != "sets":
+            continue
+        target = str(relation.get("target", ""))
+        _, _, target_symbol = target.partition("#")
+        if target_symbol == symbol_name:
+            return True
+    return False
+
+
 def extract_grounding_values(content: str) -> list[tuple[int, str, float]]:
     """Extract grounded numeric values from RAC definitions, excluding formulas/tests."""
     values = []
@@ -2278,6 +2324,7 @@ class ValidatorPipeline:
         source_text = extract_embedded_source_text(content)
         if not source_text:
             return []
+        source_metadata = _load_nearby_eval_source_metadata(rac_file)
 
         issues: list[str] = []
         for block in self._extract_definition_blocks(content):
@@ -2289,6 +2336,8 @@ class ValidatorPipeline:
             status = str(block["status"] or "").lower()
             constant_boolean = bool(block["constant_boolean"])
             if not (constant_boolean or status == "deferred"):
+                continue
+            if _source_metadata_sets_target_symbol(source_metadata, block["name"]):
                 continue
 
             issues.append(
@@ -5066,6 +5115,19 @@ print("BENCHMARK:" + json.dumps(result))
                 f"'state_group_str': {{'{year}': {repr(inputs['state_group'])}}}"
             )
         household_extra = ", ".join(household_extra_parts)
+
+        if pe_var == "snap_state_uses_child_support_deduction":
+            parameter_period = self._normalize_monthly_pe_period(
+                inputs.get("period"), year, "01"
+            )
+            return f"""
+from policyengine_us import CountryTaxBenefitSystem
+
+system = CountryTaxBenefitSystem()
+params = system.parameters('{parameter_period}')
+val = 1.0 if bool(params.gov.usda.snap.income.deductions.child_support[{repr(household_state)}]) else 0.0
+print(f'RESULT:{{val}}')
+"""
 
         script = f"""
 from policyengine_us import Simulation

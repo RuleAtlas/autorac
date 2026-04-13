@@ -3054,6 +3054,62 @@ one_member_of_couple_remained_entitled_to_savings_credit_since_beginning_of_6th_
         assert result.passed is False
         assert any("Placeholder fact variable" in issue for issue in result.issues)
 
+    def test_ci_allows_constant_boolean_for_sets_metadata_target(self, pipeline):
+        """CI should allow constant booleans when eval metadata marks them as delegated `sets` targets."""
+        case_root = pipeline.rac_us_path / "tmp_eval_case"
+        rac_file = case_root / "openai-gpt-5.4" / "source" / "leaf.rac"
+        rac_file.parent.mkdir(parents=True, exist_ok=True)
+        rac_file.write_text(
+            '''
+"""
+Tennessee allows the SNAP child support deduction.
+"""
+
+snap_state_uses_child_support_deduction:
+    entity: Household
+    period: Month
+    dtype: Boolean
+    from 2026-01-01:
+        true
+'''
+        )
+
+        manifest_dir = case_root / "_eval_workspaces" / "openai-gpt-5.4" / "leaf" / "workspace"
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        (manifest_dir / "context-manifest.json").write_text(
+            json.dumps(
+                {
+                    "source_metadata": {
+                        "relations": [
+                            {
+                                "relation": "sets",
+                                "target": "usc/7/2014/e/4#snap_state_uses_child_support_deduction",
+                                "jurisdiction": "TN",
+                            }
+                        ]
+                    }
+                }
+            )
+        )
+
+        with patch("autorac.harness.validator_pipeline.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                Mock(
+                    stdout="============================================================\nTests: 1  Passed: 1  Failed: 0\nAll tests passed.\n",
+                    stderr="",
+                    returncode=0,
+                ),
+                Mock(
+                    stdout="Checked 1 .rac files\n\nAll files pass validation\n",
+                    stderr="",
+                    returncode=0,
+                ),
+            ]
+            result = pipeline._run_ci(rac_file)
+
+        assert result.passed is True
+        assert not any("Placeholder fact variable" in issue for issue in result.issues)
+
     def test_ci_adds_non_blocking_shared_concept_advisory(self, pipeline):
         """CI emits advisory text when a nearby file already defines the same symbol."""
         sibling = pipeline.rac_us_path / "26" / "24" / "b.rac"
@@ -4699,6 +4755,10 @@ class TestGetPeVariableMap:
         assert mapping["is_snap_eligible"] == "is_snap_eligible"
         assert mapping["snap_standard_deduction"] == "snap_standard_deduction"
         assert (
+            mapping["snap_state_uses_child_support_deduction"]
+            == "snap_state_uses_child_support_deduction"
+        )
+        assert (
             mapping["snap_child_support_deduction"]
             == "snap_child_support_gross_income_deduction"
         )
@@ -5060,6 +5120,19 @@ class TestGetPeVariableMap:
 
         assert "'child_support_expense': {'2022': 36.0}" in script
         assert "'state_code_str': {'2022': 'TX'}" in script
+
+    def test_build_pe_us_script_maps_snap_state_uses_child_support_deduction(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_us_scenario_script(
+            "snap_state_uses_child_support_deduction",
+            {"period": "2026-01"},
+            "2026",
+        )
+
+        assert "CountryTaxBenefitSystem" in script
+        assert "system.parameters('2026-01')" in script
+        assert "child_support['TN']" in script
 
     def test_build_pe_us_script_maps_snap_excess_medical_inputs(self, pipeline):
         script = pipeline._build_pe_us_scenario_script(

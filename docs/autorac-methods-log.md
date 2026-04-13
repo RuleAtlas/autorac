@@ -560,6 +560,25 @@ As of 2026-04-10:
   - [us-snap-ny-limited-utility-allowance-smoke4-failed-20260413](../artifacts/eval-suites/us-snap-ny-limited-utility-allowance-smoke4-failed-20260413)
   - [us-snap-ny-limited-utility-allowance-refresh1-ready-20260413](../artifacts/eval-suites/us-snap-ny-limited-utility-allowance-refresh1-ready-20260413)
 
+### 2026-04-13: Tennessee SNAP child-support deduction election closes as a delegated state-option boolean
+
+- Hypothesis:
+  - The next real state-overlay test after utility tables was whether AutoRAC could cleanly encode a delegated jurisdictional SNAP option as the option itself, rather than overfitting everything to numeric table parameters or restating a downstream federal formula.
+- Effect:
+  - Added a Tennessee SNAP Policy Manual source slice plus `relation: sets` sidecar in `rac-us-tn`, anchored to `usc/7/2014/e/4#snap_state_uses_child_support_deduction`.
+  - Added a checked-in AutoRAC benchmark for the Tennessee child-support deduction option.
+  - Extended the PolicyEngine US bridge so delegated state-option booleans can be compared directly through parameter access, rather than only via downstream benefit variables.
+  - Tightened CI so constant booleans are not misclassified as placeholder facts when eval source metadata explicitly marks them as delegated `sets` targets.
+  - The first run exposed exactly two non-semantic misses: CI treated the delegated boolean as a forbidden constant fact, and the Tennessee source slice still carried a non-operative page-number citation that grounding counted as a missing scalar. After fixing those two system/source issues, the rerun closed fully ready on compile, CI, generalist review, and PolicyEngine.
+- Primary evidence paths:
+  - [us_snap_tn_child_support_deduction_option_refresh.yaml](../benchmarks/us_snap_tn_child_support_deduction_option_refresh.yaml)
+  - [test_evals.py](../tests/test_evals.py)
+  - [test_validator_pipeline.py](../tests/test_validator_pipeline.py)
+  - [snap_state_uses_child_support_deduction_tn.txt](../../rac-us-tn/sources/slices/tdhs/snap/current-effective/snap_state_uses_child_support_deduction_tn.txt)
+  - [snap_state_uses_child_support_deduction_tn.meta.yaml](../../rac-us-tn/sources/slices/tdhs/snap/current-effective/snap_state_uses_child_support_deduction_tn.meta.yaml)
+  - [us-snap-tn-child-support-deduction-option-refresh1-failed-20260413](../artifacts/eval-suites/us-snap-tn-child-support-deduction-option-refresh1-failed-20260413)
+  - [us-snap-tn-child-support-deduction-option-refresh2-ready-20260413](../artifacts/eval-suites/us-snap-tn-child-support-deduction-option-refresh2-ready-20260413)
+
 ## Open Documentation Debt
 
 - Add before/after metric snapshots for every kept harness change rather than relying on commit messages.
