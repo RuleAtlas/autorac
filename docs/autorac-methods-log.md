@@ -611,6 +611,25 @@ As of 2026-04-10:
   - [snap_state_uses_child_support_deduction_nc.meta.yaml](../../rac-us-nc/sources/slices/ncdhhs/fns/340/current-effective/snap_state_uses_child_support_deduction_nc.meta.yaml)
   - [autorac-us-snap-nc-child-support-deduction-option-refresh1-20260413](../artifacts/eval-suites/autorac-us-snap-nc-child-support-deduction-option-refresh1-20260413)
 
+### 2026-04-13: California SNAP self-employment expense option closes as a parameter-backed delegated state option
+
+- Hypothesis:
+  - The delegated `sets` pathway should generalize beyond the child-support election if the PolicyEngine bridge can treat state-option booleans as parameter-backed slots rather than one-off hard-coded cases.
+- Effect:
+  - Added a California CalFresh source slice plus `relation: sets` sidecar in `rac-us-ca`, anchored to `cfr/7/273.11/b/3#snap_self_employment_expense_based_deduction_applies`.
+  - Updated `rac-us-ca` repo-boundary docs so California-administered SNAP overlays are treated as first-class jurisdiction content, not as out-of-repo federal leftovers.
+  - Generalized the PolicyEngine US adapter model with a reusable parameter-path field for delegated state-option booleans, then used it for both the existing child-support election and the new California self-employment expense option.
+  - The first California run already passed generation, compile, generalist review, and PolicyEngine; its only miss was CI counting the structural section citation `63-503.413` as a missing scalar. After teaching source numeric extraction to ignore manual section references of that form, the rerun closed fully ready.
+- Primary evidence paths:
+  - [us_snap_ca_self_employment_expense_option_refresh.yaml](../benchmarks/us_snap_ca_self_employment_expense_option_refresh.yaml)
+  - [validator_pipeline.py](../src/autorac/harness/validator_pipeline.py)
+  - [test_evals.py](../tests/test_evals.py)
+  - [test_validator_pipeline.py](../tests/test_validator_pipeline.py)
+  - [snap_self_employment_expense_based_deduction_applies_ca.txt](../../rac-us-ca/sources/slices/cdss/calfresh/current-effective/snap_self_employment_expense_based_deduction_applies_ca.txt)
+  - [snap_self_employment_expense_based_deduction_applies_ca.meta.yaml](../../rac-us-ca/sources/slices/cdss/calfresh/current-effective/snap_self_employment_expense_based_deduction_applies_ca.meta.yaml)
+  - [us-snap-ca-self-employment-expense-option-refresh1-ci-false-positive-20260413](../artifacts/eval-suites/us-snap-ca-self-employment-expense-option-refresh1-ci-false-positive-20260413)
+  - [us-snap-ca-self-employment-expense-option-refresh2-ready-20260413](../artifacts/eval-suites/us-snap-ca-self-employment-expense-option-refresh2-ready-20260413)
+
 ## Open Documentation Debt
 
 - Add before/after metric snapshots for every kept harness change rather than relying on commit messages.

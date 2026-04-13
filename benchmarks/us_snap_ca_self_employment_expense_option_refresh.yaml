@@ -1,0 +1,20 @@
+name: California SNAP self-employment expense option refresh
+runners:
+  - openai:gpt-5.4
+mode: repo-augmented
+gates:
+  min_cases: 1
+  min_success_rate: 1.0
+  min_compile_pass_rate: 1.0
+  min_ci_pass_rate: 1.0
+  min_zero_ungrounded_rate: 1.0
+  min_generalist_review_pass_rate: 1.0
+  min_policyengine_pass_rate: 1.0
+cases:
+  - kind: source
+    name: snap_self_employment_expense_based_deduction_applies_ca
+    source_id: California CalFresh self-employment expense choice under MPP 63-503.413
+    source_file: ../../rac-us-ca/sources/slices/cdss/calfresh/current-effective/snap_self_employment_expense_based_deduction_applies_ca.txt
+    oracle: policyengine
+    policyengine_country: auto
+    policyengine_rac_var_hint: snap_self_employment_expense_based_deduction_applies

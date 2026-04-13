@@ -137,6 +137,9 @@ This file is the claim register for future writing. It separates claims that are
 - Do not claim that New York SNAP as a whole is encoded or benchmark-closed.
   - Correct framing:
     - The New York telephone, standard, and limited utility allowance overlays plus the New York child-support deduction election are now green against compile, CI, generalist review, and PolicyEngine on `rac-us-ny`, which is useful evidence that the state-overlay `sets` pattern transfers to a third jurisdiction for both multi-region utility schedules and a delegated false-state option boolean. It does not by itself establish broader New York SNAP coverage beyond those four slices.
+- Do not claim that California SNAP as a whole is encoded or benchmark-closed.
+  - Correct framing:
+    - The California self-employment expense option lane is now green against compile, CI, generalist review, and PolicyEngine on `rac-us-ca`. That is useful evidence that the delegated `sets` pattern also covers a parameter-backed SNAP self-employment state option in a fourth jurisdiction, but it does not by itself establish broader California SNAP coverage beyond that slice.
 - Do not claim that the current-effective federal SNAP eligibility lane is fully person-granular.
   - Correct framing:
     - The `is_snap_eligible` benchmark is now green against compile, CI, generalist review, and PolicyEngine, but the accepted artifact still carries non-blocking household-level compression of the member-disqualification facts. This is a clean closeout for the specific benchmark slice, not a proof that general person-to-household aggregation is solved across the ontology.

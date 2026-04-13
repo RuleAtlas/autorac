@@ -612,6 +612,23 @@ Both legally obligated and informal child support payments are treated as income
         assert 7.0 not in occurrences
         assert 2025.0 not in occurrences
 
+    def test_ignores_structural_manual_section_numbers(self):
+        occurrences = extract_numeric_occurrences_from_text(
+            """
+California Department of Social Services, California DSS Manual FS, Manual
+Letter No. FS-01-02, section 63-503.413 Allowable Cost of Producing
+Self-Employment Income:
+
+To determine the net gross income of the applicant or recipient, the individual
+shall choose either actual costs of producing self-employment income or a
+standard deduction of 40 percent of gross earned income.
+"""
+        )
+
+        assert 63.0 not in occurrences
+        assert 503.413 not in occurrences
+        assert 0.4 in occurrences
+
     def test_ignores_manual_references_and_schedule_row_labels(self):
         occurrences = extract_numeric_occurrences_from_text(
             """
@@ -4783,6 +4800,10 @@ class TestGetPeVariableMap:
             == "snap_state_uses_child_support_deduction"
         )
         assert (
+            mapping["snap_self_employment_expense_based_deduction_applies"]
+            == "snap_self_employment_expense_based_deduction_applies"
+        )
+        assert (
             mapping["snap_child_support_deduction"]
             == "snap_child_support_gross_income_deduction"
         )
@@ -5169,6 +5190,30 @@ class TestGetPeVariableMap:
 
         assert "child_support['NY']" in script
 
+    def test_build_pe_us_script_maps_snap_self_employment_expense_option(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_us_scenario_script(
+            "snap_self_employment_expense_based_deduction_applies",
+            {"period": "2026-01"},
+            "2026",
+        )
+
+        assert "CountryTaxBenefitSystem" in script
+        assert "system.parameters('2026-01')" in script
+        assert "expense_based_deduction_applies['CA']" in script
+
+    def test_build_pe_us_script_maps_snap_self_employment_expense_option_for_explicit_state(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_us_scenario_script(
+            "snap_self_employment_expense_based_deduction_applies",
+            {"period": "2026-01", "state_code_str": "NY"},
+            "2026",
+        )
+
+        assert "expense_based_deduction_applies['NY']" in script
+
     def test_run_policyengine_uses_source_metadata_jurisdiction_for_state_option(
         self, pipeline, temp_dirs
     ):
@@ -5220,6 +5265,58 @@ snap_state_uses_child_support_deduction:
         assert result.passed is True
         script = mock_run.call_args.args[0]
         assert "child_support['NY']" in script
+
+    def test_run_policyengine_uses_source_metadata_jurisdiction_for_self_employment_state_option(
+        self, pipeline, temp_dirs
+    ):
+        rac_us, _ = temp_dirs
+        case_root = rac_us / "tmp_eval_case"
+        rac_file = case_root / "openai-gpt-5.4" / "source" / "leaf.rac"
+        rac_file.parent.mkdir(parents=True, exist_ok=True)
+        rac_file.write_text(
+            """
+snap_self_employment_expense_based_deduction_applies:
+    entity: Household
+    period: Month
+    dtype: Boolean
+    tests:
+        - name: ca_true
+          period: 2026-01
+          expect: true
+"""
+        )
+
+        manifest_dir = case_root / "_eval_workspaces" / "openai-gpt-5.4" / "leaf" / "workspace"
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        (manifest_dir / "context-manifest.json").write_text(
+            json.dumps(
+                {
+                    "source_metadata": {
+                        "relations": [
+                            {
+                                "relation": "sets",
+                                "target": "cfr/7/273.11/b/3#snap_self_employment_expense_based_deduction_applies",
+                                "jurisdiction": "CA",
+                            }
+                        ]
+                    }
+                }
+            )
+        )
+
+        with patch.object(pipeline, "_find_pe_python", return_value="/usr/bin/python"):
+            with patch.object(
+                pipeline,
+                "_run_pe_subprocess_detailed",
+                return_value=OracleSubprocessResult(
+                    returncode=0, stdout="RESULT:1.0\n"
+                ),
+            ) as mock_run:
+                result = pipeline._run_policyengine(rac_file)
+
+        assert result.passed is True
+        script = mock_run.call_args.args[0]
+        assert "expense_based_deduction_applies['CA']" in script
 
     def test_build_pe_us_script_maps_snap_excess_medical_inputs(self, pipeline):
         script = pipeline._build_pe_us_scenario_script(

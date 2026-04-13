@@ -162,6 +162,7 @@ class _PolicyEngineUSVarAdapter:
     unsupported_input_reason: str | None = None
     default_state_code: str | None = None
     state_code_from_boolean_input: tuple[str, str, str] | None = None
+    parameter_path: str | None = None
 
 
 def _normalize_state_code_from_utility_region(region: str) -> str:
@@ -350,6 +351,16 @@ _PE_US_VAR_ADAPTERS = (
         rac_vars=("snap_state_uses_child_support_deduction",),
         pe_var="snap_state_uses_child_support_deduction",
         default_state_code="TN",
+        parameter_path="gov.usda.snap.income.deductions.child_support",
+    ),
+    _PolicyEngineUSVarAdapter(
+        rac_vars=("snap_self_employment_expense_based_deduction_applies",),
+        pe_var="snap_self_employment_expense_based_deduction_applies",
+        default_state_code="CA",
+        parameter_path=(
+            "gov.usda.snap.income.deductions.self_employment."
+            "expense_based_deduction_applies"
+        ),
     ),
     _PolicyEngineUSVarAdapter(
         rac_vars=("meets_snap_asset_test",),
@@ -803,6 +814,10 @@ _STRUCTURAL_SOURCE_BULLETIN_NUMBER_PATTERN = re.compile(
 )
 _STRUCTURAL_SOURCE_REVISION_PATTERN = re.compile(
     r"\b(?:Rev\.?|Revision)\s+\d{1,2}/\d{4}\b",
+    re.IGNORECASE,
+)
+_STRUCTURAL_SOURCE_SECTION_PATTERN = re.compile(
+    r"\b(?:section|sec\.?)\s+\d+(?:-\d+)+(?:\.\d+)*\b",
     re.IGNORECASE,
 )
 _STRUCTURAL_SOURCE_QUOTE_CHARS = "\"'`“”‘’"
@@ -1391,6 +1406,7 @@ def _clean_source_text_for_numeric_extraction(text: str) -> str:
     cleaned = _STRUCTURAL_SOURCE_MANUAL_NUMBER_PATTERN.sub(" ", cleaned)
     cleaned = _STRUCTURAL_SOURCE_BULLETIN_NUMBER_PATTERN.sub(" ", cleaned)
     cleaned = _STRUCTURAL_SOURCE_REVISION_PATTERN.sub(" ", cleaned)
+    cleaned = _STRUCTURAL_SOURCE_SECTION_PATTERN.sub(" ", cleaned)
     cleaned = GROUNDING_DATE_PATTERN.sub(" ", cleaned)
     cleaned = _MONTH_NAME_DATE_PATTERN.sub(" ", cleaned)
     cleaned = _MONTH_NAME_DAY_PATTERN.sub(" ", cleaned)
@@ -5148,7 +5164,7 @@ print("BENCHMARK:" + json.dumps(result))
             )
         household_extra = ", ".join(household_extra_parts)
 
-        if pe_var == "snap_state_uses_child_support_deduction":
+        if adapter is not None and adapter.parameter_path is not None:
             parameter_period = self._normalize_monthly_pe_period(
                 inputs.get("period"), year, "01"
             )
@@ -5157,7 +5173,7 @@ from policyengine_us import CountryTaxBenefitSystem
 
 system = CountryTaxBenefitSystem()
 params = system.parameters('{parameter_period}')
-val = 1.0 if bool(params.gov.usda.snap.income.deductions.child_support[{repr(household_state)}]) else 0.0
+val = 1.0 if bool(params.{adapter.parameter_path}[{repr(household_state)}]) else 0.0
 print(f'RESULT:{{val}}')
 """
 
