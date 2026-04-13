@@ -1,0 +1,20 @@
+name: Tennessee SNAP individual utility allowance refresh
+runners:
+  - openai:gpt-5.4
+mode: repo-augmented
+gates:
+  min_cases: 1
+  min_success_rate: 1.0
+  min_compile_pass_rate: 1.0
+  min_ci_pass_rate: 1.0
+  min_zero_ungrounded_rate: 1.0
+  min_generalist_review_pass_rate: 1.0
+  min_policyengine_pass_rate: 1.0
+cases:
+  - kind: source
+    name: snap_individual_utility_allowance_tn
+    source_id: Tennessee SNAP telephone utility allowance under TennCare ABD Manual 125.020 section 3.d.ii.1.c.iii
+    source_file: ../../rac-us/sources/slices/tenncare/post-eligibility/current-effective/snap_individual_utility_allowance_tn.txt
+    oracle: policyengine
+    policyengine_country: auto
+    policyengine_rac_var_hint: snap_individual_utility_allowance

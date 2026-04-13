@@ -5417,6 +5417,42 @@ cases:
         assert case.policyengine_country == "auto"
         assert case.policyengine_rac_var_hint == "snap_limited_utility_allowance"
 
+    def test_repo_us_snap_tn_individual_utility_allowance_refresh_manifest_loads_expected_case(
+        self,
+    ):
+        repo_root = Path(__file__).resolve().parents[1]
+        manifest = load_eval_suite_manifest(
+            repo_root
+            / "benchmarks"
+            / "us_snap_tn_individual_utility_allowance_refresh.yaml"
+        )
+
+        assert manifest.name == "Tennessee SNAP individual utility allowance refresh"
+        assert manifest.mode == "repo-augmented"
+        assert len(manifest.cases) == 1
+        assert manifest.gates.min_policyengine_pass_rate == 1.0
+        case = manifest.cases[0]
+        assert case.kind == "source"
+        assert case.name == "snap_individual_utility_allowance_tn"
+        assert (
+            case.source_id
+            == "Tennessee SNAP telephone utility allowance under TennCare ABD Manual 125.020 section 3.d.ii.1.c.iii"
+        )
+        assert case.source_file == (
+            repo_root.parent
+            / "rac-us"
+            / "sources"
+            / "slices"
+            / "tenncare"
+            / "post-eligibility"
+            / "current-effective"
+            / "snap_individual_utility_allowance_tn.txt"
+        ).resolve()
+        assert case.allow_context == []
+        assert case.oracle == "policyengine"
+        assert case.policyengine_country == "auto"
+        assert case.policyengine_rac_var_hint == "snap_individual_utility_allowance"
+
 
 class TestReadinessSummary:
     def test_summarize_readiness_applies_suite_gates(self):
