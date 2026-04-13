@@ -629,6 +629,21 @@ standard deduction of 40 percent of gross earned income.
         assert 503.413 not in occurrences
         assert 0.4 in occurrences
 
+    def test_ignores_structural_code_and_section_citations(self):
+        occurrences = extract_numeric_occurrences_from_text(
+            """
+Colorado SNAP self-employment expense deduction rule under 10 CCR 2506-1
+section 4.403.11(B)-(C)(3) for period 2026-01.
+
+Allowable costs of doing business include identifiable costs of labor.
+"""
+        )
+
+        assert 10.0 not in occurrences
+        assert -1.0 not in occurrences
+        assert 3.0 not in occurrences
+        assert 4.40311 not in occurrences
+
     def test_ignores_manual_references_and_schedule_row_labels(self):
         occurrences = extract_numeric_occurrences_from_text(
             """

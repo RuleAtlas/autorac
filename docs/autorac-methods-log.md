@@ -630,6 +630,26 @@ As of 2026-04-10:
   - [us-snap-ca-self-employment-expense-option-refresh1-ci-false-positive-20260413](../artifacts/eval-suites/us-snap-ca-self-employment-expense-option-refresh1-ci-false-positive-20260413)
   - [us-snap-ca-self-employment-expense-option-refresh2-ready-20260413](../artifacts/eval-suites/us-snap-ca-self-employment-expense-option-refresh2-ready-20260413)
 
+### 2026-04-13: Colorado SNAP self-employment expense option closes after generalized code-citation cleanup
+
+- Hypothesis:
+  - The parameter-backed delegated `sets` path for SNAP self-employment expense options should transfer from California to another jurisdiction without new oracle-adapter logic. If the first Colorado replay fails, the most likely remaining gap is structural numeric cleanup for state code citations rather than the legal model itself.
+- Effect:
+  - Added a Colorado SNAP regulation source slice plus `relation: sets` sidecar in `rac-us-co`, anchored to `cfr/7/273.11/b/3#snap_self_employment_expense_based_deduction_applies`.
+  - Updated `rac-us-co` repo-boundary docs so Colorado-administered SNAP overlays are treated as first-class jurisdiction content alongside Colorado Works materials.
+  - Added a checked-in AutoRAC benchmark for the Colorado self-employment expense option.
+  - The first Colorado run already passed generation, compile, generalist review, and PolicyEngine; its only miss was CI counting structural citation numerics from `10 CCR 2506-1` and `section 4.403.11(B)-(C)(3)` as missing scalars.
+  - Generalized source numeric cleanup to ignore code citations and decimal section references of that form, then reran the same benchmark. The second run closed fully ready without changing the adapter path.
+- Primary evidence paths:
+  - [us_snap_co_self_employment_expense_option_refresh.yaml](../benchmarks/us_snap_co_self_employment_expense_option_refresh.yaml)
+  - [validator_pipeline.py](../src/autorac/harness/validator_pipeline.py)
+  - [test_evals.py](../tests/test_evals.py)
+  - [test_validator_pipeline.py](../tests/test_validator_pipeline.py)
+  - [snap_self_employment_expense_based_deduction_applies_co.txt](../../rac-us-co/sources/slices/cdhs/snap/current-effective/snap_self_employment_expense_based_deduction_applies_co.txt)
+  - [snap_self_employment_expense_based_deduction_applies_co.meta.yaml](../../rac-us-co/sources/slices/cdhs/snap/current-effective/snap_self_employment_expense_based_deduction_applies_co.meta.yaml)
+  - [us-snap-co-self-employment-expense-option-refresh1-ci-false-positive-20260413](../artifacts/eval-suites/us-snap-co-self-employment-expense-option-refresh1-ci-false-positive-20260413)
+  - [us-snap-co-self-employment-expense-option-refresh2-ready-20260413](../artifacts/eval-suites/us-snap-co-self-employment-expense-option-refresh2-ready-20260413)
+
 ## Open Documentation Debt
 
 - Add before/after metric snapshots for every kept harness change rather than relying on commit messages.
