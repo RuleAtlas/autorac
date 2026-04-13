@@ -422,6 +422,33 @@ As of 2026-04-10:
   - [us-snap-nc-individual-utility-allowance-refresh1-policyengine-gap-20260412](../artifacts/eval-suites/us-snap-nc-individual-utility-allowance-refresh1-policyengine-gap-20260412)
   - [us-snap-nc-individual-utility-allowance-refresh3-ready-20260412](../artifacts/eval-suites/us-snap-nc-individual-utility-allowance-refresh3-ready-20260412)
 
+### 2026-04-12: Tennessee SNAP standard and limited utility allowance overlays closed on the repaired harness
+
+- Primary commits:
+  - `1c6af99` `Add Tennessee SNAP utility allowance source slices`
+  - `2f68c83` `Close Tennessee SNAP utility allowance harness gaps`
+- Hypothesis:
+  - The Tennessee state-overlay misses were not new semantic failures in the utility-allowance pattern. They came from a cluster of harness issues: monthly test normalization rewrote valid pre-effective month cases into the first effective month, PolicyEngine interpreter discovery could miss the active worktree venv, structural manual references like `TennCare ABD Manual 125.020` still leaked into source numeric grounding, and generated current-effective update slices kept inventing speculative `pre_effective_* = 0` tests even when prior values were outside the cited slice.
+- Effect:
+  - AutoRAC now preserves explicit earlier `YYYY-MM` monthly test periods instead of clamping them forward to the effective month.
+  - PolicyEngine interpreter discovery now supports an explicit env override and known `~/worktrees/policyengine-us-main-view/.venv`-style checkout locations before falling back to ambient installs, reducing stale-oracle risk.
+  - Structural manual references in both heading form (`... Manual 125.020`) and `Policy Manual Number 125.020` form are now excluded from source numeric grounding.
+  - For monthly update slices, AutoRAC now drops speculative `pre_effective_*` zero-output tests when the same output already has a positive in-scope case, which prevents false oracle failures on prior-period values that are outside the cited source slice.
+  - Tennessee limited utility allowance now reaches a clean ready state against compile, CI, generalist review, and PolicyEngine.
+  - Tennessee standard utility allowance now also reaches a clean ready state against compile, CI, generalist review, and PolicyEngine after removing the speculative pre-effective zero test and replaying against the pinned PolicyEngine worktree interpreter.
+- Primary evidence paths:
+  - [us_snap_tn_limited_utility_allowance_refresh.yaml](../benchmarks/us_snap_tn_limited_utility_allowance_refresh.yaml)
+  - [us_snap_tn_standard_utility_allowance_refresh.yaml](../benchmarks/us_snap_tn_standard_utility_allowance_refresh.yaml)
+  - [evals.py](../src/autorac/harness/evals.py)
+  - [validator_pipeline.py](../src/autorac/harness/validator_pipeline.py)
+  - [test_evals.py](../tests/test_evals.py)
+  - [test_validator_pipeline.py](../tests/test_validator_pipeline.py)
+  - [snap_limited_utility_allowance_tn.txt](../../rac-us/sources/slices/tenncare/post-eligibility/current-effective/snap_limited_utility_allowance_tn.txt)
+  - [snap_standard_utility_allowance_tn.txt](../../rac-us/sources/slices/tenncare/post-eligibility/current-effective/snap_standard_utility_allowance_tn.txt)
+  - [us-snap-tn-limited-utility-allowance-refresh4-ready-20260412](../artifacts/eval-suites/us-snap-tn-limited-utility-allowance-refresh4-ready-20260412)
+  - [us-snap-tn-standard-utility-allowance-refresh5-failed-20260412](../artifacts/eval-suites/us-snap-tn-standard-utility-allowance-refresh5-failed-20260412)
+  - [us-snap-tn-standard-utility-allowance-refresh7-ready-20260412](../artifacts/eval-suites/us-snap-tn-standard-utility-allowance-refresh7-ready-20260412)
+
 ## Open Documentation Debt
 
 - Add before/after metric snapshots for every kept harness change rather than relying on commit messages.

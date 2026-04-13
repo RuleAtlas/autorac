@@ -131,6 +131,9 @@ This file is the claim register for future writing. It separates claims that are
 - Do not claim that North Carolina SNAP utility allowances are fully settled across all future PolicyEngine releases unless the NC phone-allowance data fix is upstreamed and retained.
   - Correct framing:
     - The current local benchmark set for North Carolina standard, limited, and telephone utility allowances is now green against compile, CI, generalist review, and PolicyEngine after correcting stale local PolicyEngine NC phone data for the `2024-10-01` effective period. That demonstrates the state-overlay pattern and the current local oracle lane, but it does not by itself prove that upstream PolicyEngine releases already include the same correction.
+- Do not claim that Tennessee SNAP as a whole is encoded or benchmark-closed.
+  - Correct framing:
+    - The Tennessee standard and limited utility allowance overlays are now green against compile, CI, generalist review, and PolicyEngine on the repaired harness, which is strong evidence that the state-overlay utility-allowance pattern generalizes beyond North Carolina. It does not by itself establish broader Tennessee SNAP coverage outside those two utility slices.
 - Do not claim that the current-effective federal SNAP eligibility lane is fully person-granular.
   - Correct framing:
     - The `is_snap_eligible` benchmark is now green against compile, CI, generalist review, and PolicyEngine, but the accepted artifact still carries non-blocking household-level compression of the member-disqualification facts. This is a clean closeout for the specific benchmark slice, not a proof that general person-to-household aggregation is solved across the ontology.
