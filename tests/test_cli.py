@@ -812,6 +812,7 @@ class TestCmdEvalSuiteRevalidate:
             "duration_ms": 1,
             "success": True,
             "error": None,
+            "generation_prompt_sha256": "generation-digest",
             "input_tokens": 1,
             "output_tokens": 1,
             "cache_read_tokens": 0,
@@ -837,6 +838,7 @@ class TestCmdEvalSuiteRevalidate:
                 "generalist_review_pass": False,
                 "generalist_review_score": 1.0,
                 "generalist_review_issues": ["old"],
+                "generalist_review_prompt_sha256": "old-review-digest",
                 "policyengine_pass": False,
                 "policyengine_score": 0.0,
                 "policyengine_issues": ["old"],
@@ -873,6 +875,7 @@ class TestCmdEvalSuiteRevalidate:
             generalist_review_pass=True,
             generalist_review_score=9.0,
             generalist_review_issues=[],
+            generalist_review_prompt_sha256="fresh-review-digest",
             policyengine_pass=True,
             policyengine_score=1.0,
             policyengine_issues=[],
@@ -914,6 +917,8 @@ class TestCmdEvalSuiteRevalidate:
         ledger = (source_output / "suite-results.jsonl").read_text()
         assert '"compile_pass": true' in ledger
         assert '"policyengine_pass": true' in ledger
+        assert '"generation_prompt_sha256": "generation-digest"' in ledger
+        assert '"generalist_review_prompt_sha256": "fresh-review-digest"' in ledger
         summary_payload = json.loads((source_output / "summary.json").read_text())
         assert summary_payload["all_ready"] is True
         run_state = json.loads((source_output / "suite-run.json").read_text())

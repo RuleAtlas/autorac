@@ -20,6 +20,7 @@ from autorac.harness.evals import (
     _build_eval_prompt,
     _clean_generated_file_content,
     _command_looks_out_of_bounds,
+    _eval_result_from_payload,
     _fetch_legislation_gov_uk_document,
     _hydrate_eval_root,
     _is_single_amount_table_slice,
@@ -115,6 +116,58 @@ class TestCodexPromptEval:
 
         assert terminated is True
         assert process.terminated is True
+
+
+def test_eval_result_payload_round_trips_prompt_digests():
+    result = EvalResult(
+        citation="snap_test",
+        runner="codex-gpt-5.4",
+        backend="codex",
+        model="gpt-5.4",
+        mode="repo-augmented",
+        output_file="/tmp/snap_test.rac",
+        trace_file="/tmp/snap_test.trace.json",
+        context_manifest_file="/tmp/snap_test.context.json",
+        duration_ms=1234,
+        success=True,
+        error=None,
+        input_tokens=11,
+        output_tokens=22,
+        cache_read_tokens=33,
+        cache_creation_tokens=44,
+        reasoning_output_tokens=55,
+        estimated_cost_usd=0.12,
+        actual_cost_usd=None,
+        retrieved_files=["/tmp/context.rac"],
+        unexpected_accesses=[],
+        metrics=EvalArtifactMetrics(
+            compile_pass=True,
+            compile_issues=[],
+            ci_pass=True,
+            ci_issues=[],
+            embedded_source_present=True,
+            grounded_numeric_count=1,
+            ungrounded_numeric_count=0,
+            grounding=[],
+            generalist_review_pass=True,
+            generalist_review_score=9.0,
+            generalist_review_issues=[],
+            generalist_review_prompt_sha256="review-digest",
+            policyengine_pass=True,
+            policyengine_score=1.0,
+            policyengine_issues=[],
+            taxsim_pass=None,
+            taxsim_score=None,
+            taxsim_issues=[],
+        ),
+        generation_prompt_sha256="generation-digest",
+    )
+
+    restored = _eval_result_from_payload(result.to_dict())
+
+    assert restored.generation_prompt_sha256 == "generation-digest"
+    assert restored.metrics is not None
+    assert restored.metrics.generalist_review_prompt_sha256 == "review-digest"
 
     def test_wait_for_codex_process_terminates_after_persistent_output(self, tmp_path):
         last_message = tmp_path / ".codex-last-message.txt"

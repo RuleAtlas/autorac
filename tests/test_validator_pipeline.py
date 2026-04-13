@@ -10,6 +10,7 @@ Tests cover:
 6. Convenience function
 """
 
+import hashlib
 import json
 import sys
 import tempfile
@@ -3350,6 +3351,9 @@ class TestRunReviewer:
             # Verify oracle context was included in prompt
             call_prompt = mock_claude.call_args[0][0]
             assert "POLICYENGINE" in call_prompt
+            assert result.prompt_sha256 == hashlib.sha256(
+                call_prompt.encode("utf-8")
+            ).hexdigest()
 
     def test_reviewer_includes_review_context_and_companion_test(
         self, pipeline, temp_rac_file

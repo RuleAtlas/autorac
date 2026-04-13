@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import contextlib
+import hashlib
 import json
 import os
 import re
@@ -148,6 +149,7 @@ class EvalArtifactMetrics:
     generalist_review_pass: bool | None = None
     generalist_review_score: float | None = None
     generalist_review_issues: list[str] = field(default_factory=list)
+    generalist_review_prompt_sha256: str | None = None
     policyengine_pass: bool | None = None
     policyengine_score: float | None = None
     policyengine_issues: list[str] = field(default_factory=list)
@@ -218,6 +220,7 @@ class EvalResult:
     retrieved_files: list[str]
     unexpected_accesses: list[str]
     metrics: EvalArtifactMetrics | None
+    generation_prompt_sha256: str | None = None
 
     def to_dict(self) -> dict:
         data = asdict(self)
@@ -408,6 +411,13 @@ def run_source_eval(
 def _collapse_whitespace(text: str) -> str:
     """Normalize extracted XML text into one readable line."""
     return " ".join(text.split())
+
+
+def _sha256_text(text: str | None) -> str | None:
+    """Return a stable digest for a prompt or prompt-derived text blob."""
+    if text is None:
+        return None
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _akn_child_text(parent: ET.Element, child_tag: str) -> str:
@@ -1496,6 +1506,9 @@ def _eval_result_from_payload(payload: dict) -> EvalResult:
             generalist_review_issues=list(
                 metrics_payload.get("generalist_review_issues") or []
             ),
+            generalist_review_prompt_sha256=metrics_payload.get(
+                "generalist_review_prompt_sha256"
+            ),
             policyengine_pass=metrics_payload.get("policyengine_pass"),
             policyengine_score=metrics_payload.get("policyengine_score"),
             policyengine_issues=list(metrics_payload.get("policyengine_issues") or []),
@@ -1516,6 +1529,7 @@ def _eval_result_from_payload(payload: dict) -> EvalResult:
         duration_ms=int(payload.get("duration_ms", 0) or 0),
         success=bool(payload.get("success", False)),
         error=payload.get("error"),
+        generation_prompt_sha256=payload.get("generation_prompt_sha256"),
         input_tokens=int(payload.get("input_tokens", 0) or 0),
         output_tokens=int(payload.get("output_tokens", 0) or 0),
         cache_read_tokens=int(payload.get("cache_read_tokens", 0) or 0),
@@ -1548,6 +1562,7 @@ def _suite_case_failure_results(
             duration_ms=0,
             success=False,
             error=str(exc),
+            generation_prompt_sha256=None,
             input_tokens=0,
             output_tokens=0,
             cache_read_tokens=0,
@@ -2283,6 +2298,7 @@ def evaluate_artifact(
         generalist_review_pass=generalist_review_result.passed,
         generalist_review_score=generalist_review_result.score,
         generalist_review_issues=generalist_review_result.issues,
+        generalist_review_prompt_sha256=generalist_review_result.prompt_sha256,
         policyengine_pass=(
             policyengine_result.passed if policyengine_result is not None else None
         ),
@@ -2331,6 +2347,7 @@ def _run_single_eval(
         include_tests=False,
         runner_backend=runner.backend,
     )
+    generation_prompt_sha256 = _sha256_text(prompt)
     response = _run_prompt_eval(runner, workspace, prompt)
     output_file = Path(output_root) / runner.name / relative_output
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -2374,6 +2391,7 @@ def _run_single_eval(
         duration_ms=response.duration_ms,
         success=wrote_artifact and response.error is None,
         error=response.error or (None if wrote_artifact else "No RAC content returned"),
+        generation_prompt_sha256=generation_prompt_sha256,
         input_tokens=tokens.input_tokens if tokens else 0,
         output_tokens=tokens.output_tokens if tokens else 0,
         cache_read_tokens=tokens.cache_read_tokens if tokens else 0,
@@ -2426,6 +2444,7 @@ def _run_single_source_eval(
         runner_backend=runner.backend,
         policyengine_rac_var_hint=policyengine_rac_var_hint,
     )
+    generation_prompt_sha256 = _sha256_text(prompt)
     response = _run_prompt_eval(runner, workspace, prompt)
     output_file = Path(output_root) / runner.name / relative_output
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -2472,6 +2491,7 @@ def _run_single_source_eval(
         duration_ms=response.duration_ms,
         success=wrote_artifact and response.error is None,
         error=response.error or (None if wrote_artifact else "No RAC content returned"),
+        generation_prompt_sha256=generation_prompt_sha256,
         input_tokens=tokens.input_tokens if tokens else 0,
         output_tokens=tokens.output_tokens if tokens else 0,
         cache_read_tokens=tokens.cache_read_tokens if tokens else 0,

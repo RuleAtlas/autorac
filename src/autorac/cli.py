@@ -2273,6 +2273,7 @@ def _serialize_eval_result(result) -> dict:
         "duration_ms": getattr(result, "duration_ms", None),
         "success": getattr(result, "success", None),
         "error": getattr(result, "error", None),
+        "generation_prompt_sha256": getattr(result, "generation_prompt_sha256", None),
         "metrics": getattr(result, "metrics", None),
     }
 

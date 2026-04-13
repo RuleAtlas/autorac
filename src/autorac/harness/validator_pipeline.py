@@ -15,6 +15,7 @@ Uses Claude Code CLI (subprocess) for reviewer agents - cheaper than direct API.
 """
 
 import contextlib
+import hashlib
 import json
 import os
 import re
@@ -171,6 +172,13 @@ def _normalize_state_code_from_utility_region(region: str) -> str:
     if match:
         return match.group(1)
     return region
+
+
+def _sha256_text(text: str | None) -> str | None:
+    """Return a stable digest for prompt text."""
+    if text is None:
+        return None
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 _PE_US_VAR_ADAPTERS = (
@@ -1630,6 +1638,7 @@ class ValidationResult:
     duration_ms: int = 0
     error: Optional[str] = None
     raw_output: Optional[str] = None
+    prompt_sha256: Optional[str] = None
 
 
 @dataclass
@@ -2991,6 +3000,7 @@ Output ONLY valid JSON:
   "reasoning": "<brief explanation>"
 }}
 """
+        prompt_sha256 = _sha256_text(prompt)
 
         try:
             reviewer_timeout = int(os.getenv("AUTORAC_REVIEWER_TIMEOUT_SECONDS", "300"))
@@ -3048,6 +3058,7 @@ Output ONLY valid JSON:
                 issues=issues if isinstance(issues, list) else [str(issues)],
                 duration_ms=duration,
                 raw_output=output,
+                prompt_sha256=prompt_sha256,
             )
 
         except Exception as e:
@@ -3059,6 +3070,7 @@ Output ONLY valid JSON:
                 issues=[f"Reviewer error: {e}"],
                 duration_ms=duration,
                 error=str(e),
+                prompt_sha256=prompt_sha256,
             )
 
     def _detect_policyengine_country(self, rac_file: Path, rac_content: str) -> str:
