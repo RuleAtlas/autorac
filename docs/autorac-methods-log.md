@@ -748,6 +748,24 @@ As of 2026-04-10:
   - [autorac-snap-state-uses-child-support-deduction-fl-20260413t220610](../artifacts/eval-suites/autorac-snap-state-uses-child-support-deduction-fl-20260413t220610)
   - [autorac-snap-self-employment-expense-based-deduction-applies-fl-20260413t220911](../artifacts/eval-suites/autorac-snap-self-employment-expense-based-deduction-applies-fl-20260413t220911)
 
+### 2026-04-14: Maryland self-employment lane is corrected to the simplified deduction-rate slot and closes ready
+
+- Hypothesis:
+  - The Maryland DHS source slice does not support the previously benchmarked boolean `snap_self_employment_expense_based_deduction_applies`. It states a concrete 50 percent simplified deduction rate. The correct fix is to change the benchmark ontology, not to keep repairing the wrong boolean target.
+- Effect:
+  - Replaced the Maryland source slice and sidecar so the jurisdiction sets `cfr/7/273.11/b/3#snap_self_employment_simplified_deduction_rate` instead of the expense-based boolean slot.
+  - Replaced the checked-in Maryland benchmark with a new AutoRAC refresh manifest for `snap_self_employment_simplified_deduction_rate`.
+  - Extended the PE-US adapter so parameter-backed SNAP state options can read numeric parameter values, not just booleans.
+  - Re-ran the event-driven Codex queue. It retired the deleted Maryland expense-based manifest automatically, queued the new simplified-rate manifest, and the new run closed fully ready on success, compile, CI, zero ungrounded numerics, generalist review, and PolicyEngine.
+- Primary evidence paths:
+  - [us_snap_md_self_employment_simplified_deduction_rate_refresh.yaml](../benchmarks/us_snap_md_self_employment_simplified_deduction_rate_refresh.yaml)
+  - [validator_pipeline.py](../src/autorac/harness/validator_pipeline.py)
+  - [test_evals.py](../tests/test_evals.py)
+  - [test_validator_pipeline.py](../tests/test_validator_pipeline.py)
+  - [snap_self_employment_simplified_deduction_rate_md.txt](../../rac-us-md/sources/slices/dhs/snap/current-effective/snap_self_employment_simplified_deduction_rate_md.txt)
+  - [snap_self_employment_simplified_deduction_rate_md.meta.yaml](../../rac-us-md/sources/slices/dhs/snap/current-effective/snap_self_employment_simplified_deduction_rate_md.meta.yaml)
+  - [autorac-snap-self-employment-simplified-deduction-rate-md-20260414t064852](../artifacts/eval-suites/autorac-snap-self-employment-simplified-deduction-rate-md-20260414t064852)
+
 ## Open Documentation Debt
 
 - Add before/after metric snapshots for every kept harness change rather than relying on commit messages.

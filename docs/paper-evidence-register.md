@@ -203,6 +203,8 @@ PY
 
 - Florida claim guard:
   - We can now say the delegated SNAP state-option pattern transfers to Florida on two official Florida ESS manual slices, one for child-support deduction election and one for self-employment actual-expense treatment, both closing fully ready on the first event-driven Codex queue pass.
+- Maryland claim guard:
+  - We can now say the Maryland self-employment slice only supports the simplified deduction-rate parameter, not the expense-based boolean option, and the corrected Maryland rate benchmark closes fully ready on the event-driven Codex queue once the ontology is aligned to that source.
 - A shareable or publishable benchmark artifact registry, not just a local archive.
 - A table of before/after metrics for each accepted harness change.
 - Record-level public comparison data for UK that can be shown without licensing constraints.
