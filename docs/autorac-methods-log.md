@@ -868,6 +868,30 @@ As of 2026-04-10:
   - [autorac-snap-state-uses-child-support-deduction-ar-20260414t091035](../artifacts/eval-suites/autorac-snap-state-uses-child-support-deduction-ar-20260414t091035)
   - [autorac-snap-self-employment-expense-based-deduction-applies-ar-20260414t091446](../artifacts/eval-suites/autorac-snap-self-employment-expense-based-deduction-applies-ar-20260414t091446)
 
+### 2026-04-14: Texas parity push extends beyond utilities and option booleans
+
+- Hypothesis:
+  - Texas was the strongest candidate for a first state-level SNAP parity push because it already had green utility allowances plus the child-support deduction election and self-employment actual-expense option. The next likely PolicyEngine-comparable Texas gaps were the standard medical deduction amount and the homeless shelter deduction availability boolean published in the HHSC MEPD/TW bulletin.
+- Effect:
+  - Added exact `rac-us-tx` source slices and delegated `sets` sidecars for `snap_standard_medical_expense_deduction` and `snap_homeless_shelter_deduction_available`, both anchored to the upstream federal slots those Texas bulletin values fill.
+  - Added checked-in AutoRAC benchmarks for both Texas lanes and extended the PolicyEngine adapter so the standard medical deduction compares as a numeric parameter-backed state setting and the homeless shelter lane compares as a delegated boolean availability flag.
+  - The first standard-medical replay already matched PolicyEngine and reviewer expectations, but CI failed only because the source slice repeated the `$35` documentary threshold in both the quoted bulletin fact and the explanatory text. Narrowing the source text to one substantive occurrence fixed that without changing the generated RAC.
+  - The first homeless-availability replay fixed the earlier missing-oracle-target problem, then failed only because the source slice repeated `198.99` in both the bulletin fact and an instruction sentence. Removing the second documentary repetition let the queue auto-requeue the manifest and close the rerun cleanly.
+  - The local event-driven queue's manifest/source hash tracking did real work here: after the queue-runner bug fix, the corrected Texas source changes automatically requeued the blocked homeless lane and drove it to a clean ready state without manual queue surgery for the second pass.
+- Primary evidence paths:
+  - [us_snap_tx_standard_medical_expense_deduction_refresh.yaml](../benchmarks/us_snap_tx_standard_medical_expense_deduction_refresh.yaml)
+  - [us_snap_tx_homeless_shelter_deduction_available_refresh.yaml](../benchmarks/us_snap_tx_homeless_shelter_deduction_available_refresh.yaml)
+  - [evals.py](../src/autorac/harness/evals.py)
+  - [validator_pipeline.py](../src/autorac/harness/validator_pipeline.py)
+  - [test_evals.py](../tests/test_evals.py)
+  - [test_validator_pipeline.py](../tests/test_validator_pipeline.py)
+  - [snap_standard_medical_expense_deduction_tx.txt](../../rac-us-tx/sources/slices/txhhs/twh/current-effective/snap_standard_medical_expense_deduction_tx.txt)
+  - [snap_standard_medical_expense_deduction_tx.meta.yaml](../../rac-us-tx/sources/slices/txhhs/twh/current-effective/snap_standard_medical_expense_deduction_tx.meta.yaml)
+  - [snap_homeless_shelter_deduction_available_tx.txt](../../rac-us-tx/sources/slices/txhhs/twh/current-effective/snap_homeless_shelter_deduction_available_tx.txt)
+  - [snap_homeless_shelter_deduction_available_tx.meta.yaml](../../rac-us-tx/sources/slices/txhhs/twh/current-effective/snap_homeless_shelter_deduction_available_tx.meta.yaml)
+  - [autorac-snap-standard-medical-expense-deduction-tx-20260414t151911](../artifacts/eval-suites/autorac-snap-standard-medical-expense-deduction-tx-20260414t151911)
+  - [autorac-snap-homeless-shelter-deduction-available-tx-20260414t152243](../artifacts/eval-suites/autorac-snap-homeless-shelter-deduction-available-tx-20260414t152243)
+
 ## Open Documentation Debt
 
 - Add before/after metric snapshots for every kept harness change rather than relying on commit messages.

@@ -5040,6 +5040,14 @@ class TestGetPeVariableMap:
             == "snap_self_employment_expense_based_deduction_applies"
         )
         assert (
+            mapping["snap_standard_medical_expense_deduction"]
+            == "snap_standard_medical_expense_deduction"
+        )
+        assert (
+            mapping["snap_homeless_shelter_deduction_available"]
+            == "snap_homeless_shelter_deduction_available"
+        )
+        assert (
             mapping["snap_child_support_deduction"]
             == "snap_child_support_gross_income_deduction"
         )
@@ -5474,6 +5482,38 @@ class TestGetPeVariableMap:
 
         assert "float(params.gov.usda.snap.income.deductions.self_employment.rate['OH'])" in script
 
+    def test_build_pe_us_script_maps_snap_standard_medical_expense_deduction(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_us_scenario_script(
+            "snap_standard_medical_expense_deduction",
+            {"period": "2026-01", "state_code_str": "TX"},
+            "2026",
+        )
+
+        assert "CountryTaxBenefitSystem" in script
+        assert "system.parameters('2026-01')" in script
+        assert (
+            "float(params.gov.usda.snap.income.deductions.excess_medical_expense.standard['TX'])"
+            in script
+        )
+
+    def test_build_pe_us_script_maps_snap_homeless_shelter_deduction_available(
+        self, pipeline
+    ):
+        script = pipeline._build_pe_us_scenario_script(
+            "snap_homeless_shelter_deduction_available",
+            {"period": "2026-01", "state_code_str": "TX"},
+            "2026",
+        )
+
+        assert "CountryTaxBenefitSystem" in script
+        assert "system.parameters('2026-01')" in script
+        assert (
+            "val = 1.0 if bool(params.gov.usda.snap.income.deductions.excess_shelter_expense.homeless.available['TX']) else 0.0"
+            in script
+        )
+
     def test_run_policyengine_uses_source_metadata_jurisdiction_for_state_option(
         self, pipeline, temp_dirs
     ):
@@ -5629,6 +5669,110 @@ snap_self_employment_simplified_deduction_rate:
         assert result.passed is True
         script = mock_run.call_args.args[0]
         assert "rate['MD']" in script
+
+    def test_run_policyengine_uses_source_metadata_jurisdiction_for_standard_medical_expense_deduction(
+        self, pipeline, temp_dirs
+    ):
+        rac_us, _ = temp_dirs
+        case_root = rac_us / "tmp_eval_case"
+        rac_file = case_root / "openai-gpt-5.4" / "source" / "leaf.rac"
+        rac_file.parent.mkdir(parents=True, exist_ok=True)
+        rac_file.write_text(
+            """
+snap_standard_medical_expense_deduction:
+    entity: Household
+    period: Month
+    dtype: Money
+    tests:
+        - name: tx_standard_medical
+          period: 2026-01
+          expect: 135
+"""
+        )
+
+        manifest_dir = case_root / "_eval_workspaces" / "openai-gpt-5.4" / "leaf" / "workspace"
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        (manifest_dir / "context-manifest.json").write_text(
+            json.dumps(
+                {
+                    "source_metadata": {
+                        "relations": [
+                            {
+                                "relation": "sets",
+                                "target": "cfr/7/273.9/d/3#snap_standard_medical_expense_deduction",
+                                "jurisdiction": "TX",
+                            }
+                        ]
+                    }
+                }
+            )
+        )
+
+        with patch.object(pipeline, "_find_pe_python", return_value="/usr/bin/python"):
+            with patch.object(
+                pipeline,
+                "_run_pe_subprocess_detailed",
+                return_value=OracleSubprocessResult(
+                    returncode=0, stdout="RESULT:135.0\n"
+                ),
+            ) as mock_run:
+                result = pipeline._run_policyengine(rac_file)
+
+        assert result.passed is True
+        script = mock_run.call_args.args[0]
+        assert "standard['TX']" in script
+
+    def test_run_policyengine_uses_source_metadata_jurisdiction_for_homeless_shelter_deduction_available(
+        self, pipeline, temp_dirs
+    ):
+        rac_us, _ = temp_dirs
+        case_root = rac_us / "tmp_eval_case"
+        rac_file = case_root / "openai-gpt-5.4" / "source" / "leaf.rac"
+        rac_file.parent.mkdir(parents=True, exist_ok=True)
+        rac_file.write_text(
+            """
+snap_homeless_shelter_deduction_available:
+    entity: Household
+    period: Month
+    dtype: Boolean
+    tests:
+        - name: tx_homeless_available
+          period: 2026-01
+          expect: true
+"""
+        )
+
+        manifest_dir = case_root / "_eval_workspaces" / "openai-gpt-5.4" / "leaf" / "workspace"
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        (manifest_dir / "context-manifest.json").write_text(
+            json.dumps(
+                {
+                    "source_metadata": {
+                        "relations": [
+                            {
+                                "relation": "sets",
+                                "target": "usc/7/2014/e/6/D#snap_homeless_shelter_deduction_available",
+                                "jurisdiction": "TX",
+                            }
+                        ]
+                    }
+                }
+            )
+        )
+
+        with patch.object(pipeline, "_find_pe_python", return_value="/usr/bin/python"):
+            with patch.object(
+                pipeline,
+                "_run_pe_subprocess_detailed",
+                return_value=OracleSubprocessResult(
+                    returncode=0, stdout="RESULT:1.0\n"
+                ),
+            ) as mock_run:
+                result = pipeline._run_policyengine(rac_file)
+
+        assert result.passed is True
+        script = mock_run.call_args.args[0]
+        assert "homeless.available['TX']" in script
 
     def test_build_pe_us_script_maps_snap_excess_medical_inputs(self, pipeline):
         script = pipeline._build_pe_us_scenario_script(

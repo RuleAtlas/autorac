@@ -6567,6 +6567,90 @@ cases:
             == "snap_self_employment_expense_based_deduction_applies"
         )
 
+    def test_repo_us_snap_tx_standard_medical_expense_deduction_refresh_manifest_loads_expected_case(
+        self,
+    ):
+        repo_root = Path(__file__).resolve().parents[1]
+        manifest = load_eval_suite_manifest(
+            repo_root
+            / "benchmarks"
+            / "us_snap_tx_standard_medical_expense_deduction_refresh.yaml"
+        )
+
+        assert (
+            manifest.name
+            == "Texas SNAP standard medical expense deduction refresh"
+        )
+        assert manifest.mode == "repo-augmented"
+        assert len(manifest.cases) == 1
+        assert manifest.gates.min_policyengine_pass_rate == 1.0
+        case = manifest.cases[0]
+        assert case.kind == "source"
+        assert case.name == "snap_standard_medical_expense_deduction_tx"
+        assert (
+            case.source_id
+            == "Texas SNAP standard medical expense deduction under MEPD and TW Bulletin 25-15 section 2"
+        )
+        assert case.source_file == (
+            repo_root.parent
+            / "rac-us-tx"
+            / "sources"
+            / "slices"
+            / "txhhs"
+            / "twh"
+            / "current-effective"
+            / "snap_standard_medical_expense_deduction_tx.txt"
+        ).resolve()
+        assert case.allow_context == []
+        assert case.oracle == "policyengine"
+        assert case.policyengine_country == "auto"
+        assert (
+            case.policyengine_rac_var_hint
+            == "snap_standard_medical_expense_deduction"
+        )
+
+    def test_repo_us_snap_tx_homeless_shelter_deduction_available_refresh_manifest_loads_expected_case(
+        self,
+    ):
+        repo_root = Path(__file__).resolve().parents[1]
+        manifest = load_eval_suite_manifest(
+            repo_root
+            / "benchmarks"
+            / "us_snap_tx_homeless_shelter_deduction_available_refresh.yaml"
+        )
+
+        assert (
+            manifest.name
+            == "Texas SNAP homeless shelter deduction availability refresh"
+        )
+        assert manifest.mode == "repo-augmented"
+        assert len(manifest.cases) == 1
+        assert manifest.gates.min_policyengine_pass_rate == 1.0
+        case = manifest.cases[0]
+        assert case.kind == "source"
+        assert case.name == "snap_homeless_shelter_deduction_available_tx"
+        assert (
+            case.source_id
+            == "Texas SNAP homeless shelter deduction availability under MEPD and TW Bulletin 25-15 section 2"
+        )
+        assert case.source_file == (
+            repo_root.parent
+            / "rac-us-tx"
+            / "sources"
+            / "slices"
+            / "txhhs"
+            / "twh"
+            / "current-effective"
+            / "snap_homeless_shelter_deduction_available_tx.txt"
+        ).resolve()
+        assert case.allow_context == []
+        assert case.oracle == "policyengine"
+        assert case.policyengine_country == "auto"
+        assert (
+            case.policyengine_rac_var_hint
+            == "snap_homeless_shelter_deduction_available"
+        )
+
     def test_repo_us_snap_ga_self_employment_simplified_deduction_rate_refresh_manifest_loads_expected_case(
         self,
     ):
@@ -7529,6 +7613,10 @@ class TestSourceEval:
         )
         assert (
             "prefer importing those component tests over collapsing them into a single aggregate helper"
+            in prompt
+        )
+        assert (
+            "each case must assert `uc_standard_allowance_single_claimant_aged_under_25` directly in `output:`"
             in prompt
         )
         assert "prefer the oracle's direct component facts over inverted household proxy inputs" in prompt

@@ -379,6 +379,20 @@ _PE_US_VAR_ADAPTERS = (
         parameter_value_mode="float",
     ),
     _PolicyEngineUSVarAdapter(
+        rac_vars=("snap_standard_medical_expense_deduction",),
+        pe_var="snap_standard_medical_expense_deduction",
+        parameter_path="gov.usda.snap.income.deductions.excess_medical_expense.standard",
+        parameter_value_mode="float",
+    ),
+    _PolicyEngineUSVarAdapter(
+        rac_vars=("snap_homeless_shelter_deduction_available",),
+        pe_var="snap_homeless_shelter_deduction_available",
+        parameter_path=(
+            "gov.usda.snap.income.deductions.excess_shelter_expense."
+            "homeless.available"
+        ),
+    ),
+    _PolicyEngineUSVarAdapter(
         rac_vars=("meets_snap_asset_test",),
         pe_var="meets_snap_asset_test",
         monthly=True,
