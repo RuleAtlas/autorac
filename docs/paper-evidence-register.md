@@ -209,6 +209,8 @@ PY
   - We can now say the delegated SNAP state-option pattern transfers to Georgia on three official DFCS manual slices: child-support deduction election, self-employment actual-expense treatment, and the self-employment simplified deduction rate. The only accepted system repair was reusable numeric cleanup for integer manual section numbers like `3035` and `3425`.
 - South Carolina claim guard:
   - We can now say the delegated SNAP state-option pattern transfers to South Carolina on three official DSS SNAP Manual Vol 65 slices: child-support deduction election, self-employment actual-expense treatment, and the self-employment simplified deduction rate. The accepted system repair was reusable numeric cleanup for manual volume labels like `Vol 65`; no manual RAC editing was needed.
+- Alabama claim guard:
+  - We can now say the delegated SNAP state-option pattern transfers to Alabama on three official DHR Food Assistance Program Points of Eligibility Manual slices: child-support deduction election, self-employment actual-expense treatment as a universal standard-deduction rule, and the self-employment simplified deduction rate. The accepted fixes were source-slice narrowing to keep the boolean expense-option benchmark on its own target and reusable AutoRAC normalization of placeholder monthly/day `.rac.test` periods for parameter-backed PolicyEngine replay.
 - A shareable or publishable benchmark artifact registry, not just a local archive.
 - A table of before/after metrics for each accepted harness change.
 - Record-level public comparison data for UK that can be shown without licensing constraints.

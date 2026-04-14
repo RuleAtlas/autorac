@@ -820,6 +820,34 @@ As of 2026-04-10:
   - [autorac-snap-self-employment-expense-based-deduction-applies-sc-20260414t075715](../artifacts/eval-suites/autorac-snap-self-employment-expense-based-deduction-applies-sc-20260414t075715)
   - [autorac-snap-self-employment-simplified-deduction-rate-sc-20260414t074915](../artifacts/eval-suites/autorac-snap-self-employment-simplified-deduction-rate-sc-20260414t074915)
 
+### 2026-04-14: Alabama delegated SNAP option lanes close after source-slice narrowing and placeholder-period normalization
+
+- Hypothesis:
+  - Alabama should transfer on the same delegated SNAP lane shapes as Georgia and South Carolina: child-support deduction election, self-employment actual-expense treatment, and a 40 percent simplified self-employment deduction rate. The likely risk was not ontology mismatch, but source/eval hygiene because Alabama's expense-option source proof relies on the universal standard-deduction rule rather than an explicit "no actual expenses" sentence.
+- Effect:
+  - Created `rac-us-al` as an Alabama jurisdiction repo with exact DHR source slices plus `relation: sets` sidecars for `snap_state_uses_child_support_deduction`, `snap_self_employment_expense_based_deduction_applies`, and `snap_self_employment_simplified_deduction_rate`.
+  - Added checked-in AutoRAC benchmarks for all three Alabama lanes and matching manifest-load coverage.
+  - The first Alabama child-support and simplified-rate runs closed ready immediately.
+  - The first Alabama expense-option run generated the right boolean policy shape and passed compile, review, and PolicyEngine, but failed CI because the source slice bundled the supporting `40%` rate that belonged to the separate rate lane; narrowing the source slice to the operative "standard will be used for all" sentence fixed that benchmark-target mismatch.
+  - The next two Alabama expense-option reruns exposed a reusable harness problem: monthly state-option `.rac.test` files were allowed to keep placeholder periods like `0001-01` and `0001-01-01`, which broke parameter-backed PolicyEngine replay even when the encoding itself was correct.
+  - Normalized placeholder monthly and placeholder day periods in AutoRAC test materialization, locked both repairs with focused eval tests, and requeued the single blocked Alabama expense lane.
+  - The final Alabama expense replay closed fully ready on success, compile, CI, zero ungrounded numerics, generalist review, and PolicyEngine.
+- Primary evidence paths:
+  - [us_snap_al_child_support_deduction_option_refresh.yaml](../benchmarks/us_snap_al_child_support_deduction_option_refresh.yaml)
+  - [us_snap_al_self_employment_expense_option_refresh.yaml](../benchmarks/us_snap_al_self_employment_expense_option_refresh.yaml)
+  - [us_snap_al_self_employment_simplified_deduction_rate_refresh.yaml](../benchmarks/us_snap_al_self_employment_simplified_deduction_rate_refresh.yaml)
+  - [evals.py](../src/autorac/harness/evals.py)
+  - [test_evals.py](../tests/test_evals.py)
+  - [snap_state_uses_child_support_deduction_al.txt](../../rac-us-al/sources/slices/aldhr/poe/current-effective/snap_state_uses_child_support_deduction_al.txt)
+  - [snap_state_uses_child_support_deduction_al.meta.yaml](../../rac-us-al/sources/slices/aldhr/poe/current-effective/snap_state_uses_child_support_deduction_al.meta.yaml)
+  - [snap_self_employment_expense_based_deduction_applies_al.txt](../../rac-us-al/sources/slices/aldhr/poe/current-effective/snap_self_employment_expense_based_deduction_applies_al.txt)
+  - [snap_self_employment_expense_based_deduction_applies_al.meta.yaml](../../rac-us-al/sources/slices/aldhr/poe/current-effective/snap_self_employment_expense_based_deduction_applies_al.meta.yaml)
+  - [snap_self_employment_simplified_deduction_rate_al.txt](../../rac-us-al/sources/slices/aldhr/poe/current-effective/snap_self_employment_simplified_deduction_rate_al.txt)
+  - [snap_self_employment_simplified_deduction_rate_al.meta.yaml](../../rac-us-al/sources/slices/aldhr/poe/current-effective/snap_self_employment_simplified_deduction_rate_al.meta.yaml)
+  - [autorac-snap-state-uses-child-support-deduction-al-20260414t081202](../artifacts/eval-suites/autorac-snap-state-uses-child-support-deduction-al-20260414t081202)
+  - [autorac-snap-self-employment-expense-based-deduction-applies-al-20260414t084945](../artifacts/eval-suites/autorac-snap-self-employment-expense-based-deduction-applies-al-20260414t084945)
+  - [autorac-snap-self-employment-simplified-deduction-rate-al-20260414t081937](../artifacts/eval-suites/autorac-snap-self-employment-simplified-deduction-rate-al-20260414t081937)
+
 ## Open Documentation Debt
 
 - Add before/after metric snapshots for every kept harness change rather than relying on commit messages.
