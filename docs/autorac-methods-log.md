@@ -666,6 +666,31 @@ As of 2026-04-10:
   - [snap_self_employment_expense_based_deduction_applies_ny.meta.yaml](../../rac-us-ny/sources/slices/otda/snap/current-effective/snap_self_employment_expense_based_deduction_applies_ny.meta.yaml)
   - [autorac-snap-self-employment-expense-based-deduction-applies-ny-20260413t153209](../artifacts/eval-suites/autorac-snap-self-employment-expense-based-deduction-applies-ny-20260413t153209)
 
+### 2026-04-14: Texas delegated SNAP state-option lanes close after generalized handbook numeric cleanup
+
+- Hypothesis:
+  - The next Texas SNAP overlays after utility allowances should be the already-proven delegated state-option classes: child-support deduction election and self-employment actual-expense treatment. If those first Texas runs fail, the likely remaining gap is source-numeric cleanup for handbook section labels, revision codes, and IRS form references rather than a new legal-model or oracle-adapter problem.
+- Effect:
+  - Added Texas Works Handbook source slices plus `relation: sets` sidecars in `rac-us-tx` for `snap_state_uses_child_support_deduction` and `snap_self_employment_expense_based_deduction_applies`.
+  - Added checked-in AutoRAC benchmarks for both Texas lanes.
+  - Let the event-driven Codex queue process both lanes end to end.
+  - The first Texas child-support and self-employment runs both generated legally plausible delegated booleans, passed compile, passed PolicyEngine, and passed review, but failed CI because the validator still counted handbook section identifiers like `A-1421.1`, revision markers like `Revision 24-2`, and `Form 1040` references as missing substantive numerics.
+  - Generalized numeric cleanup to ignore those structural handbook/form references, locked that behavior with focused validator tests, requeued the blocked Texas items on the same event-driven runner, and both reruns closed fully ready.
+- Primary evidence paths:
+  - [us_snap_tx_child_support_deduction_option_refresh.yaml](../benchmarks/us_snap_tx_child_support_deduction_option_refresh.yaml)
+  - [us_snap_tx_self_employment_expense_option_refresh.yaml](../benchmarks/us_snap_tx_self_employment_expense_option_refresh.yaml)
+  - [validator_pipeline.py](../src/autorac/harness/validator_pipeline.py)
+  - [test_evals.py](../tests/test_evals.py)
+  - [test_validator_pipeline.py](../tests/test_validator_pipeline.py)
+  - [snap_state_uses_child_support_deduction_tx.txt](../../rac-us-tx/sources/slices/txhhs/twh/current-effective/snap_state_uses_child_support_deduction_tx.txt)
+  - [snap_state_uses_child_support_deduction_tx.meta.yaml](../../rac-us-tx/sources/slices/txhhs/twh/current-effective/snap_state_uses_child_support_deduction_tx.meta.yaml)
+  - [snap_self_employment_expense_based_deduction_applies_tx.txt](../../rac-us-tx/sources/slices/txhhs/twh/current-effective/snap_self_employment_expense_based_deduction_applies_tx.txt)
+  - [snap_self_employment_expense_based_deduction_applies_tx.meta.yaml](../../rac-us-tx/sources/slices/txhhs/twh/current-effective/snap_self_employment_expense_based_deduction_applies_tx.meta.yaml)
+  - [autorac-snap-state-uses-child-support-deduction-tx-20260413t205409](../artifacts/eval-suites/autorac-snap-state-uses-child-support-deduction-tx-20260413t205409)
+  - [autorac-snap-self-employment-expense-based-deduction-applies-tx-20260413t205807](../artifacts/eval-suites/autorac-snap-self-employment-expense-based-deduction-applies-tx-20260413t205807)
+  - [autorac-snap-state-uses-child-support-deduction-tx-20260413t210425](../artifacts/eval-suites/autorac-snap-state-uses-child-support-deduction-tx-20260413t210425)
+  - [autorac-snap-self-employment-expense-based-deduction-applies-tx-20260413t210753](../artifacts/eval-suites/autorac-snap-self-employment-expense-based-deduction-applies-tx-20260413t210753)
+
 ## Open Documentation Debt
 
 - Add before/after metric snapshots for every kept harness change rather than relying on commit messages.

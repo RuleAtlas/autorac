@@ -143,6 +143,9 @@ This file is the claim register for future writing. It separates claims that are
 - Do not claim that Colorado SNAP as a whole is encoded or benchmark-closed.
   - Correct framing:
     - The Colorado self-employment expense option lane is now green against compile, CI, generalist review, and PolicyEngine on `rac-us-co`. That is useful evidence that the delegated `sets` pattern for parameter-backed SNAP self-employment options transfers to a fifth jurisdiction and that structural code-citation cleanup now generalizes to state regulation slices like `10 CCR 2506-1`. It still does not by itself establish broader Colorado SNAP coverage beyond that slice.
+- Do not claim that Texas SNAP as a whole is encoded or benchmark-closed.
+  - Correct framing:
+    - The Texas standard, limited, and telephone utility allowance overlays plus the Texas child-support deduction election and self-employment expense option are now green against compile, CI, generalist review, and PolicyEngine on `rac-us-tx`. That is useful evidence that the state-overlay `sets` pattern transfers to a sixth jurisdiction for both numeric utility parameters and delegated state-option booleans, and that handbook-section/revision/form numeric cleanup now generalizes beyond bulletin-style sources. It does not by itself establish broader Texas SNAP coverage beyond those slices.
 - Do not claim that the current-effective federal SNAP eligibility lane is fully person-granular.
   - Correct framing:
     - The `is_snap_eligible` benchmark is now green against compile, CI, generalist review, and PolicyEngine, but the accepted artifact still carries non-blocking household-level compression of the member-disqualification facts. This is a clean closeout for the specific benchmark slice, not a proof that general person-to-household aggregation is solved across the ontology.
