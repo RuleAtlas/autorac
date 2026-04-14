@@ -4144,6 +4144,8 @@ def _normalize_placeholder_monthly_test_period_value(period: object) -> object:
     contemporary_month = "2024-01"
     if period is None:
         return contemporary_month
+    if isinstance(period, date) and period.year <= 1:
+        return contemporary_month
     if isinstance(period, int) and period <= 1:
         return contemporary_month
     if isinstance(period, str):
@@ -4151,6 +4153,8 @@ def _normalize_placeholder_monthly_test_period_value(period: object) -> object:
         if stripped in {"", "1", "0001"}:
             return contemporary_month
         if re.fullmatch(r"0001-\d{2}", stripped):
+            return contemporary_month
+        if re.fullmatch(r"0001-\d{2}-\d{2}", stripped):
             return contemporary_month
     return period
 

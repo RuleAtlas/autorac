@@ -1741,12 +1741,12 @@ class TestGeneratedBundleCleaning:
             "        false\n"
             "=== FILE: alabama-snap-expense-option.rac.test ===\n"
             "- name: expense_based_option_not_used\n"
-            "  period: 0001-01\n"
+            "  period: 0001-01-01\n"
             "  input: {}\n"
             "  output:\n"
             "    snap_self_employment_expense_based_deduction_applies: false\n"
             "- name: expense_based_option_still_not_used\n"
-            "  period: 0001-02\n"
+            "  period: 0001-02-01\n"
             "  input: {}\n"
             "  output:\n"
             "    snap_self_employment_expense_based_deduction_applies: false\n"
@@ -1764,8 +1764,8 @@ class TestGeneratedBundleCleaning:
 
         assert wrote is True
         test_text = output_file.with_suffix(".rac.test").read_text()
-        assert "period: 0001-01" not in test_text
-        assert "period: 0001-02" not in test_text
+        assert "period: 0001-01-01" not in test_text
+        assert "period: 0001-02-01" not in test_text
         assert (
             test_text.count("period: '2024-01'") + test_text.count("period: 2024-01")
             == 2
