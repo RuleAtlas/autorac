@@ -781,6 +781,25 @@ federal income taxes on the Internal Revenue Service's Schedule C, Form 1040.
         assert 1040.0 not in occurrences
         assert 2025.0 not in occurrences
 
+    def test_ignores_manual_volume_numbers(self):
+        occurrences = extract_numeric_occurrences_from_text(
+            """
+South Carolina SNAP child support deduction under SNAP Manual Vol 65 section 12.7
+for period 2026-01.
+
+South Carolina Department of Social Services, SNAP Policy Manual, Vol 65,
+section 12.7 Child Support Deduction, August 2025:
+
+A deduction is allowed for household members who make legally obligated child
+support payments to or for an individual living outside of the household.
+"""
+        )
+
+        assert 65.0 not in occurrences
+        assert 12.7 not in occurrences
+        assert 2025.0 not in occurrences
+        assert 2026.0 not in occurrences
+
     def test_ignores_structural_manual_section_numbers(self):
         occurrences = extract_numeric_occurrences_from_text(
             """
