@@ -8090,6 +8090,10 @@ class TestSourceEval:
         )
         assert "assert a copied downstream output named by the oracle hint" in prompt
         assert (
+            "avoid pre-2015 historical periods that PolicyEngine US cannot evaluate"
+            in prompt
+        )
+        assert (
             "do not assume a different jurisdiction implies zero unless the source text expressly says so"
             in prompt
         )
