@@ -7011,6 +7011,16 @@ class TestIsPeTestMappable:
 
         assert occurrences == [0.2]
 
+    def test_ignores_usc_nested_subsection_number_six_in_source_occurrences(self):
+        occurrences = extract_numeric_occurrences_from_text(
+            "SNAP pre-shelter net income under 7 USC 2014(e)(6)(A) for period 2024-01.\n"
+            "Under 7 USC 2014(e)(6)(A), the excess shelter deduction compares shelter costs "
+            "to 50 percent of monthly household income after all other applicable deductions "
+            "have been allowed."
+        )
+
+        assert occurrences == [0.5]
+
     def test_ignores_synthetic_modeling_instruction_numeric_occurrences(self):
         occurrences = extract_numeric_occurrences_from_text(
             "SNAP earned income deduction under 7 USC 2014(e)(2)(B) for period 2022-01.\n"

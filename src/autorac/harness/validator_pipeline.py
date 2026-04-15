@@ -885,7 +885,8 @@ _STRUCTURAL_SOURCE_FORM_NUMBER_PATTERN = re.compile(
 _STRUCTURAL_SOURCE_CODE_CITATION_PATTERN = re.compile(
     r"\b\d+\s+"
     r"(?:U\.?\s*S\.?\s*C\.?|USC|C\.?\s*F\.?\s*R\.?|CFR|C\.?\s*C\.?\s*R\.?|CCR)\s+"
-    r"\d+(?:[.-]\d+)*\b",
+    r"\d+(?:[.-]\d+)*(?:\([A-Za-z0-9]+\))*"
+    r"(?=$|[\s,.;:])",
     re.IGNORECASE,
 )
 _STRUCTURAL_SOURCE_SECTION_PATTERN = re.compile(
