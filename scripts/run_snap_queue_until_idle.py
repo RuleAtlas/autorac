@@ -25,7 +25,6 @@ from typing import Any
 
 import yaml
 
-
 CODEX_HOME = Path(
     os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))
 ).expanduser().resolve()
@@ -53,6 +52,7 @@ DEFAULT_ARCHIVE_ROOT = Path(
 ).expanduser().resolve()
 DEFAULT_ATLAS_ARCH_ROOT = Path.home() / ".arch"
 BENCHMARK_GLOB = "us_snap_*_refresh.yaml"
+SOURCE_TRACKING_VERSION = 1
 POLICYENGINE_CANDIDATES = [
     Path.home() / "worktrees" / "policyengine-us-main-view",
     Path.home() / "PolicyEngine" / "policyengine-us",
@@ -149,13 +149,10 @@ def sha256_paths(paths: list[Path | None]) -> str | None:
     ]
     if not existing:
         return None
-    if len(existing) == 1:
-        return sha256_file(existing[0])
 
     digest = hashlib.sha256()
     for resolved in existing:
-        digest.update(str(resolved).encode("utf-8"))
-        digest.update(b"\0")
+        digest.update(b"file\0")
         file_digest = sha256_file(resolved)
         if file_digest is not None:
             digest.update(file_digest.encode("utf-8"))
@@ -402,6 +399,7 @@ def sync_queue_with_manifests(
                     "source_inputs": candidate.get("source_inputs", []),
                     "manifest_sha256": manifest_sha,
                     "source_sha256": source_sha,
+                    "source_tracking_version": SOURCE_TRACKING_VERSION,
                     "note": "queued from manifest sync",
                 }
             )
@@ -410,6 +408,7 @@ def sync_queue_with_manifests(
             continue
         previous_manifest_sha = existing.get("manifest_sha256")
         previous_source_sha = existing.get("source_sha256")
+        previous_tracking_version = existing.get("source_tracking_version")
         for key in ("manifest", "source_file", "source_inputs"):
             if existing.get(key) != candidate[key]:
                 existing[key] = candidate[key]
@@ -420,12 +419,21 @@ def sync_queue_with_manifests(
         if existing.get("source_sha256") != source_sha:
             existing["source_sha256"] = source_sha
             changed = True
+        if existing.get("source_tracking_version") != SOURCE_TRACKING_VERSION:
+            existing["source_tracking_version"] = SOURCE_TRACKING_VERSION
+            changed = True
+        source_tracking_migrated = (
+            previous_tracking_version != SOURCE_TRACKING_VERSION
+        )
         if (
             previous_manifest_sha is not None
             and previous_source_sha is not None
             and (
                 previous_manifest_sha != manifest_sha
-                or previous_source_sha != source_sha
+                or (
+                    previous_source_sha != source_sha
+                    and not source_tracking_migrated
+                )
             )
             and existing.get("status") in {"done", "blocked", "retryable"}
         ):
@@ -709,6 +717,9 @@ def build_run_record(
         "manifest_sha256": sha256_file(manifest_path),
         "source_file": str(source_path) if source_path else None,
         "source_sha256": sha256_paths(source_inputs or [source_path]),
+        "source_tracking_version": item.get(
+            "source_tracking_version", SOURCE_TRACKING_VERSION
+        ),
         "source_repo": infer_repo(item.get("source_file")),
         "autorac_sha": git_head(AUTORAC_ROOT),
         "policy_repo_sha": git_head(policy_repo_root),
@@ -962,6 +973,7 @@ def process_queue(queue_path: Path) -> int:
         item["output_dir"] = str(output_dir)
         item["archive_path"] = str(archive_path) if archive_path else item.get("archive_path")
         item["finished_at"] = now_utc()
+        item["source_tracking_version"] = SOURCE_TRACKING_VERSION
         item["note"] = reason
         append_event(
             data,
