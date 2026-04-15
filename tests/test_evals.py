@@ -2784,6 +2784,7 @@ class TestEvalPrompt:
         assert "entity:" in prompt
         assert "period:" in prompt
         assert "dtype:" in prompt
+        assert "Hard oracle rule" in prompt
         assert "Avoid `match ...:` in generated RAC" in prompt
         assert "Use chained `if ...: value else:` expressions" in prompt
         assert "encode the rate scalar itself" in prompt

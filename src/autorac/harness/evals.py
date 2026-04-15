@@ -2892,6 +2892,13 @@ Available precedent files:
 """
     if include_tests:
         test_file_name = Path(target_file_name).with_suffix(".rac.test").name
+        oracle_test_output_rule = ""
+        if policyengine_rac_var_hint:
+            oracle_test_output_rule = (
+                f"- Hard oracle rule: every non-empty `.rac.test` `output:` mapping "
+                f"must include `{policyengine_rac_var_hint}` directly. Do not replace "
+                f"it with a local helper, amount, threshold, or documentary value.\n"
+            )
         file_output_rules = f"""
 - Return exactly this two-file bundle and nothing else:
 === FILE: {target_file_name} ===
@@ -2899,6 +2906,7 @@ Available precedent files:
 === FILE: {test_file_name} ===
 <raw .rac.test YAML>
 - The `.rac.test` file must contain 1-4 cases, unless the `.rac` file is fully `status: deferred` or `status: entity_not_supported` with no assertable outputs.
+{oracle_test_output_rule.rstrip()}
 - For a fully deferred or `entity_not_supported` fallback file with no assertable outputs, leave `.rac.test` empty instead of emitting `output: {{}}` or assertions against deferred symbols.
 - If `./source.txt` is omitted/repealed text shown only by ellipses or otherwise contains no operative rule content for the target slice, emit only a top-level `status: deferred` (or `status: entity_not_supported` when appropriate), keep the embedded source/docstring showing that omission, and emit no local rule blocks.
 - For ordinary source units, the `.rac.test` file should usually contain 3-4 cases covering true/applicable, false/inapplicable, and boundary or alternate factual branches.
